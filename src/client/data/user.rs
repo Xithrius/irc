@@ -23,14 +23,15 @@ pub struct User {
 
 impl User {
     /// Creates a new User.
-    pub fn new(string: &str) -> User {
+    #[must_use]
+    pub fn new(string: &str) -> Self {
         let ranks: Vec<_> = AccessLevelIterator::new(string).collect();
         let mut state = &string[ranks.len()..];
         let nickname = state.find('!').map_or(state, |i| &state[..i]).to_owned();
         state = state.find('!').map_or("", |i| &state[i + 1..]);
         let username = state.find('@').map(|i| state[..i].to_owned());
         let hostname = state.find('@').map(|i| state[i + 1..].to_owned());
-        User {
+        Self {
             nickname,
             username,
             hostname,
@@ -43,7 +44,7 @@ impl User {
                 let mut max = AccessLevel::Member;
                 for rank in ranks {
                     if rank > max {
-                        max = rank
+                        max = rank;
                     }
                 }
                 max
@@ -52,28 +53,33 @@ impl User {
     }
 
     /// Gets the nickname of the user.
+    #[must_use]
     pub fn get_nickname(&self) -> &str {
         &self.nickname
     }
 
     /// Gets the username of the user, if it's known.
     /// This requires the IRCv3.2 extension `userhost-in-name`.
+    #[must_use]
     pub fn get_username(&self) -> Option<&str> {
         self.username.as_ref().map(|s| &s[..])
     }
 
     /// Gets the hostname of the user, if it's known.
     /// This requires the IRCv3.2 extension `userhost-in-name`.
+    #[must_use]
     pub fn get_hostname(&self) -> Option<&str> {
         self.hostname.as_ref().map(|s| &s[..])
     }
 
     /// Gets the user's highest access level.
-    pub fn highest_access_level(&self) -> AccessLevel {
+    #[must_use]
+    pub const fn highest_access_level(&self) -> AccessLevel {
         self.highest_access_level
     }
 
     /// Gets all the user's access levels.
+    #[must_use]
     pub fn access_levels(&self) -> Vec<AccessLevel> {
         self.access_levels.clone()
     }
@@ -98,9 +104,9 @@ impl User {
     /// Adds an access level to the list, and updates the highest level if necessary.
     fn add_access_level(&mut self, level: AccessLevel) {
         if level > self.highest_access_level() {
-            self.highest_access_level = level
+            self.highest_access_level = level;
         }
-        self.access_levels.push(level)
+        self.access_levels.push(level);
     }
 
     /// Removes an access level from the list, and updates the highest level if necessary.
@@ -113,7 +119,7 @@ impl User {
                 let mut max = AccessLevel::Member;
                 for level in &self.access_levels {
                     if level > &max {
-                        max = *level
+                        max = *level;
                     }
                 }
                 max
@@ -123,7 +129,7 @@ impl User {
 }
 
 impl PartialEq for User {
-    fn eq(&self, other: &User) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.nickname == other.nickname
             && self.username == other.username
             && self.hostname == other.hostname
@@ -131,7 +137,7 @@ impl PartialEq for User {
 }
 
 /// The user's access level.
-#[derive(Copy, PartialEq, Clone, Debug)]
+#[derive(Copy, PartialEq, Eq, Clone, Debug)]
 pub enum AccessLevel {
     /// The channel owner (~).
     Owner,
@@ -148,54 +154,54 @@ pub enum AccessLevel {
 }
 
 impl PartialOrd for AccessLevel {
-    fn partial_cmp(&self, other: &AccessLevel) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self == other {
             return Some(Equal);
         }
         match *self {
-            AccessLevel::Owner => Some(Greater),
-            AccessLevel::Admin => {
-                if other == &AccessLevel::Owner {
+            Self::Owner => Some(Greater),
+            Self::Admin => {
+                if other == &Self::Owner {
                     Some(Less)
                 } else {
                     Some(Greater)
                 }
             }
-            AccessLevel::Oper => {
-                if other == &AccessLevel::Owner || other == &AccessLevel::Admin {
+            Self::Oper => {
+                if other == &Self::Owner || other == &Self::Admin {
                     Some(Less)
                 } else {
                     Some(Greater)
                 }
             }
-            AccessLevel::HalfOp => {
-                if other == &AccessLevel::Voice || other == &AccessLevel::Member {
+            Self::HalfOp => {
+                if other == &Self::Voice || other == &Self::Member {
                     Some(Greater)
                 } else {
                     Some(Less)
                 }
             }
-            AccessLevel::Voice => {
-                if other == &AccessLevel::Member {
+            Self::Voice => {
+                if other == &Self::Member {
                     Some(Greater)
                 } else {
                     Some(Less)
                 }
             }
-            AccessLevel::Member => Some(Less),
+            Self::Member => Some(Less),
         }
     }
 }
 
 impl FromStr for AccessLevel {
     type Err = &'static str;
-    fn from_str(s: &str) -> Result<AccessLevel, &'static str> {
+    fn from_str(s: &str) -> Result<Self, &'static str> {
         match s.chars().next() {
-            Some('~') => Ok(AccessLevel::Owner),
-            Some('&') => Ok(AccessLevel::Admin),
-            Some('@') => Ok(AccessLevel::Oper),
-            Some('%') => Ok(AccessLevel::HalfOp),
-            Some('+') => Ok(AccessLevel::Voice),
+            Some('~') => Ok(Self::Owner),
+            Some('&') => Ok(Self::Admin),
+            Some('@') => Ok(Self::Oper),
+            Some('%') => Ok(Self::HalfOp),
+            Some('+') => Ok(Self::Voice),
             None => Err("No access level in an empty string."),
             _ => Err("Failed to parse access level."),
         }
@@ -208,8 +214,8 @@ struct AccessLevelIterator {
 }
 
 impl AccessLevelIterator {
-    pub fn new(value: &str) -> AccessLevelIterator {
-        AccessLevelIterator {
+    pub fn new(value: &str) -> Self {
+        Self {
             value: value.to_owned(),
         }
     }
@@ -220,7 +226,7 @@ impl Iterator for AccessLevelIterator {
     fn next(&mut self) -> Option<AccessLevel> {
         let ret = self.value.parse();
         if !self.value.is_empty() {
-            self.value = self.value.chars().skip(1).collect()
+            self.value = self.value.chars().skip(1).collect();
         }
         ret.ok()
     }
@@ -228,10 +234,10 @@ impl Iterator for AccessLevelIterator {
 
 #[cfg(test)]
 mod test {
-    use super::AccessLevel::*;
+    use super::AccessLevel::{Admin, HalfOp, Member, Oper, Owner, Voice};
     use super::{AccessLevel, User};
     use crate::proto::ChannelMode as M;
-    use crate::proto::Mode::*;
+    use crate::proto::Mode::{Minus, Plus};
 
     #[test]
     fn parse_access_level() {

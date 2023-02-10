@@ -142,7 +142,7 @@ macro_rules! pub_state_base {
 
 macro_rules! pub_sender_base {
     () => {
-        /// Sends a request for a list of server capabilities for a specific IRCv3 version.
+        /// Sends a request for a list of server capabilities for a specific `IRCv3` version.
         pub fn send_cap_ls(&self, version: NegotiationVersion) -> error::Result<()> {
             self.send(Command::CAP(
                 None,
@@ -155,7 +155,7 @@ macro_rules! pub_sender_base {
             ))
         }
 
-        /// Sends an IRCv3 capabilities request for the specified extensions.
+        /// Sends an `IRCv3` capabilities request for the specified extensions.
         pub fn send_cap_req(&self, extensions: &[Capability]) -> error::Result<()> {
             let append = |mut s: String, c| {
                 s.push_str(c);
@@ -509,8 +509,8 @@ struct ClientState {
 }
 
 impl ClientState {
-    fn new(sender: Sender, config: Config) -> ClientState {
-        ClientState {
+    fn new(sender: Sender, config: Config) -> Self {
+        Self {
             sender,
             config,
             chanlists: RwLock::new(HashMap::new()),
@@ -519,13 +519,13 @@ impl ClientState {
         }
     }
 
-    fn config(&self) -> &Config {
+    const fn config(&self) -> &Config {
         &self.config
     }
 
     fn send<M: Into<Message>>(&self, msg: M) -> error::Result<()> {
         let msg = msg.into();
-        self.handle_sent_message(&msg)?;
+        self.handle_sent_message(&msg);
         self.sender.send(msg)
     }
 
@@ -544,14 +544,12 @@ impl ClientState {
     }
 
     /// Handles sent messages internally for basic client functionality.
-    fn handle_sent_message(&self, msg: &Message) -> error::Result<()> {
+    fn handle_sent_message(&self, msg: &Message) {
         log::trace!("[SENT] {}", msg.to_string());
 
         if let PART(ref chan, _) = msg.command {
             let _ = self.chanlists.write().remove(chan);
         }
-
-        Ok(())
     }
 
     /// Handles received messages internally for basic client functionality.
@@ -563,7 +561,7 @@ impl ClientState {
             KICK(ref chan, ref user, _) => self.handle_part(user, chan),
             QUIT(_) => self.handle_quit(msg.source_nickname().unwrap_or("")),
             NICK(ref new_nick) => {
-                self.handle_nick_change(msg.source_nickname().unwrap_or(""), new_nick)
+                self.handle_nick_change(msg.source_nickname().unwrap_or(""), new_nick);
             }
             ChannelMODE(ref chan, ref modes) => self.handle_mode(chan, modes),
             PRIVMSG(ref target, ref body) => {
@@ -577,15 +575,14 @@ impl ClientState {
                         body[1..end].split(' ').collect()
                     };
                     if target.starts_with('#') {
-                        self.handle_ctcp(target, &tokens)?
+                        self.handle_ctcp(target, &tokens)?;
                     } else if let Some(user) = msg.source_nickname() {
-                        self.handle_ctcp(user, &tokens)?
+                        self.handle_ctcp(user, &tokens)?;
                     }
                 }
             }
             Command::Response(Response::RPL_NAMREPLY, ref args) => self.handle_namreply(args),
-            Command::Response(Response::RPL_ENDOFMOTD, _)
-            | Command::Response(Response::ERR_NOMOTD, _) => {
+            Command::Response(Response::RPL_ENDOFMOTD | Response::ERR_NOMOTD, _) => {
                 self.send_nick_password()?;
                 self.send_umodes()?;
 
@@ -601,20 +598,19 @@ impl ClientState {
                     .keys()
                     .filter(|x| !config_chans.iter().any(|c| &c == x))
                 {
-                    self.send_join(chan)?
+                    self.send_join(chan)?;
                 }
             }
-            Command::Response(Response::ERR_NICKNAMEINUSE, _)
-            | Command::Response(Response::ERR_ERRONEOUSNICKNAME, _) => {
+            Command::Response(Response::ERR_NICKNAMEINUSE | Response::ERR_ERRONEOUSNICKNAME, _) => {
                 let alt_nicks = self.config().alternate_nicknames();
                 let mut index = self.alt_nick_index.write();
 
                 if *index >= alt_nicks.len() {
                     return Err(error::Error::NoUsableNick);
-                } else {
-                    self.send(NICK(alt_nicks[*index].to_owned()))?;
-                    *index += 1;
                 }
+
+                self.send(NICK(alt_nicks[*index].clone()))?;
+                *index += 1;
             }
             _ => (),
         }
@@ -628,10 +624,10 @@ impl ClientState {
             let mut index = self.alt_nick_index.write();
 
             if self.config().should_ghost() && *index != 0 {
-                let seq = match self.config().ghost_sequence() {
-                    Some(seq) => seq,
-                    None => &*self.default_ghost_sequence,
-                };
+                let seq = self
+                    .config()
+                    .ghost_sequence()
+                    .map_or(&*self.default_ghost_sequence, |seq| seq);
 
                 for s in seq {
                     self.send(NICKSERV(vec![
@@ -641,7 +637,7 @@ impl ClientState {
                     ]))?;
                 }
                 *index = 0;
-                self.send(NICK(self.config().nickname()?.to_owned()))?
+                self.send(NICK(self.config().nickname()?.to_owned()))?;
             }
 
             self.send(NICKSERV(vec![
@@ -683,7 +679,7 @@ impl ClientState {
     fn handle_join(&self, src: &str, chan: &str) {
         if let Some(vec) = self.chanlists.write().get_mut(&chan.to_owned()) {
             if !src.is_empty() {
-                vec.push(User::new(src))
+                vec.push(User::new(src));
             }
         }
     }
@@ -745,7 +741,7 @@ impl ClientState {
                 Mode::Plus(_, Some(ref user)) | Mode::Minus(_, Some(ref user)) => {
                     if let Some(vec) = self.chanlists.write().get_mut(chan) {
                         if let Some(n) = vec.iter().position(|x| x.get_nickname() == user) {
-                            vec[n].update_access_level(mode)
+                            vec[n].update_access_level(mode);
                         }
                     }
                 }
@@ -766,7 +762,7 @@ impl ClientState {
                     .write()
                     .entry(chan.clone())
                     .or_insert_with(Vec::new)
-                    .push(User::new(user))
+                    .push(User::new(user));
             }
         }
     }
@@ -802,7 +798,7 @@ impl ClientState {
 
     #[cfg(feature = "ctcp")]
     fn send_ctcp_internal(&self, target: &str, msg: &str) -> error::Result<()> {
-        self.send_notice(target, format!("\u{001}{}\u{001}", msg))
+        self.send_notice(target, format!("\u{001}{msg}\u{001}"))
     }
 
     #[cfg(not(feature = "ctcp"))]
@@ -831,7 +827,7 @@ impl Sender {
 
 /// Future to handle outgoing messages.
 ///
-/// Note: this is essentially the same as a version of [SendAll](https://github.com/rust-lang-nursery/futures-rs/blob/master/futures-util/src/sink/send_all.rs) that owns it's sink and stream.
+/// Note: this is essentially the same as a version of [`SendAll`](https://github.com/rust-lang-nursery/futures-rs/blob/master/futures-util/src/sink/send_all.rs) that owns it's sink and stream.
 #[derive(Debug)]
 pub struct Outgoing {
     sink: SplitSink<Connection, Message>,
@@ -872,7 +868,7 @@ impl Future for Outgoing {
         let this = &mut *self;
 
         if let Some(message) = this.buffered.take() {
-            ready!(this.try_start_send(cx, message))?
+            ready!(this.try_start_send(cx, message))?;
         }
 
         loop {
@@ -920,15 +916,15 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new<P: AsRef<Path>>(config: P) -> error::Result<Client> {
-        Client::from_config(Config::load(config)?).await
+    pub async fn new<P: AsRef<Path>>(config: P) -> error::Result<Self> {
+        Self::from_config(Config::load(config)?).await
     }
 
     /// Creates a `Future` of an `Client` from the specified configuration and on the event loop
     /// corresponding to the given handle. This can be used to set up a number of `Clients` on a
     /// single, shared event loop. It can also be used to take more control over execution and error
     /// handling. Connection will not occur until the event loop is run.
-    pub async fn from_config(config: Config) -> error::Result<Client> {
+    pub async fn from_config(config: Config) -> error::Result<Self> {
         let (tx_outgoing, rx_outgoing) = mpsc::unbounded_channel();
         let conn = Connection::new(&config, tx_outgoing.clone()).await?;
 
@@ -939,7 +935,7 @@ impl Client {
 
         let sender = Sender { tx_outgoing };
 
-        Ok(Client {
+        Ok(Self {
             sender: sender.clone(),
             state: Arc::new(ClientState::new(sender, config)),
             incoming: Some(incoming),
@@ -970,6 +966,7 @@ impl Client {
     }
 
     /// Get access to a thread-safe sender that can be used with the client.
+    #[must_use]
     pub fn sender(&self) -> Sender {
         self.sender.clone()
     }
@@ -1002,13 +999,14 @@ impl Client {
     /// Gets a list of currently joined channels. This will be `None` if tracking is disabled
     /// altogether via the `nochanlists` feature.
     #[cfg(not(feature = "nochanlists"))]
+    #[must_use]
     pub fn list_channels(&self) -> Option<Vec<String>> {
         Some(
             self.state
                 .chanlists
                 .read()
                 .keys()
-                .map(|k| k.to_owned())
+                .map(std::clone::Clone::clone)
                 .collect(),
         )
     }
@@ -1038,6 +1036,7 @@ impl Client {
     /// # }
     /// ```
     #[cfg(not(feature = "nochanlists"))]
+    #[must_use]
     pub fn list_users(&self, chan: &str) -> Option<Vec<User>> {
         self.state.chanlists.read().get(&chan.to_owned()).cloned()
     }
@@ -1050,6 +1049,7 @@ impl Client {
     /// Gets the current nickname in use. This may be the primary username set in the configuration,
     /// or it could be any of the alternative nicknames listed as well. As a result, this is the
     /// preferred way to refer to the client's nickname.
+    #[must_use]
     pub fn current_nickname(&self) -> &str {
         self.state.current_nickname()
     }
@@ -1122,7 +1122,7 @@ mod test {
         }
     }
 
-    pub fn get_client_value(client: Client) -> String {
+    pub fn get_client_value(client: &Client) -> String {
         // We sleep here because of synchronization issues.
         // We can't guarantee that everything will have been sent by the time of this call.
         thread::sleep(Duration::from_millis(100));
@@ -1166,7 +1166,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "JOIN #test\r\nJOIN #test2\r\n"
         );
         Ok(())
@@ -1184,7 +1184,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NICKSERV IDENTIFY password\r\nJOIN #test\r\n\
              JOIN #test2\r\n"
         );
@@ -1208,7 +1208,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "JOIN #test\r\nJOIN #test2 password\r\n"
         );
         Ok(())
@@ -1230,7 +1230,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NICK test2\r\nNICKSERV GHOST test password\r\n\
              NICK test\r\nNICKSERV IDENTIFY password\r\nJOIN #test\r\nJOIN #test2\r\n"
         );
@@ -1254,7 +1254,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NICK test2\r\nNICKSERV RECOVER test password\
              \r\nNICKSERV RELEASE test password\r\nNICK test\r\nNICKSERV IDENTIFY password\
              \r\nJOIN #test\r\nJOIN #test2\r\n"
@@ -1275,7 +1275,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "MODE test +B\r\nJOIN #test\r\nJOIN #test2\r\n"
         );
         Ok(())
@@ -1290,7 +1290,7 @@ mod test {
         })
         .await?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "NICK test2\r\n");
+        assert_eq!(&get_client_value(&client)[..], "NICK test2\r\n");
         Ok(())
     }
 
@@ -1318,7 +1318,7 @@ mod test {
             .is_ok());
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG #test :Hi there!\r\n"
         );
         Ok(())
@@ -1328,11 +1328,14 @@ mod test {
     async fn send_no_newline_injection() -> Result<()> {
         let mut client = Client::from_config(test_config()).await?;
         assert!(client
-            .send(PRIVMSG("#test".to_string(), "Hi there!\r\nJOIN #bad".to_string()))
+            .send(PRIVMSG(
+                "#test".to_string(),
+                "Hi there!\r\nJOIN #bad".to_string()
+            ))
             .is_ok());
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG #test :Hi there!\r\n"
         );
         Ok(())
@@ -1349,7 +1352,7 @@ mod test {
             .is_ok());
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PASS password\r\nNICK test\r\n"
         );
         Ok(())
@@ -1535,7 +1538,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NOTICE test :\u{001}FINGER :test (test)\u{001}\r\n"
         );
         Ok(())
@@ -1552,7 +1555,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             &format!(
                 "NOTICE test :\u{001}VERSION {}\u{001}\r\n",
                 crate::VERSION_STR,
@@ -1572,7 +1575,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NOTICE test :\u{001}SOURCE https://github.com/aatxe/irc\u{001}\r\n"
         );
         Ok(())
@@ -1589,7 +1592,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NOTICE test :\u{001}PING test\u{001}\r\n"
         );
         Ok(())
@@ -1605,7 +1608,7 @@ mod test {
         })
         .await?;
         client.stream()?.collect().await?;
-        let val = get_client_value(client);
+        let val = get_client_value(&client);
         assert!(val.starts_with("NOTICE test :\u{001}TIME :"));
         assert!(val.ends_with("\u{001}\r\n"));
         Ok(())
@@ -1622,7 +1625,7 @@ mod test {
         .await?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NOTICE test :\u{001}USERINFO :Testing.\u{001}\
              \r\n"
         );
@@ -1639,7 +1642,7 @@ mod test {
         })
         .await?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "");
+        assert_eq!(&get_client_value(&client)[..], "");
         Ok(())
     }
 
@@ -1649,7 +1652,7 @@ mod test {
         client.identify()?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "CAP END\r\nNICK test\r\n\
              USER test 0 * test\r\n"
         );
@@ -1667,7 +1670,7 @@ mod test {
         client.identify()?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "CAP END\r\nPASS password\r\nNICK test\r\n\
              USER test 0 * test\r\n"
         );
@@ -1679,7 +1682,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_pong("irc.test.net")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "PONG irc.test.net\r\n");
+        assert_eq!(&get_client_value(&client)[..], "PONG irc.test.net\r\n");
         Ok(())
     }
 
@@ -1689,7 +1692,7 @@ mod test {
         client.send_join("#test,#test2,#test3")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "JOIN #test,#test2,#test3\r\n"
         );
         Ok(())
@@ -1700,7 +1703,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_part("#test")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "PART #test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "PART #test\r\n");
         Ok(())
     }
 
@@ -1709,7 +1712,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_oper("test", "test")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "OPER test test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "OPER test test\r\n");
         Ok(())
     }
 
@@ -1719,7 +1722,7 @@ mod test {
         client.send_privmsg("#test", "Hi, everybody!")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG #test :Hi, everybody!\r\n"
         );
         Ok(())
@@ -1731,7 +1734,7 @@ mod test {
         client.send_notice("#test", "Hi, everybody!")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "NOTICE #test :Hi, everybody!\r\n"
         );
         Ok(())
@@ -1742,7 +1745,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_topic("#test", "")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "TOPIC #test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "TOPIC #test\r\n");
         Ok(())
     }
 
@@ -1752,7 +1755,7 @@ mod test {
         client.send_topic("#test", "Testing stuff.")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "TOPIC #test :Testing stuff.\r\n"
         );
         Ok(())
@@ -1764,7 +1767,7 @@ mod test {
         client.send_kill("test", "Testing kills.")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "KILL test :Testing kills.\r\n"
         );
         Ok(())
@@ -1775,7 +1778,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_kick("#test", "test", "")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "KICK #test test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "KICK #test test\r\n");
         Ok(())
     }
 
@@ -1785,7 +1788,7 @@ mod test {
         client.send_kick("#test", "test", "Testing kicks.")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "KICK #test test :Testing kicks.\r\n"
         );
         Ok(())
@@ -1796,7 +1799,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_mode("#test", &[Mode::Plus(ChannelMode::InviteOnly, None)])?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "MODE #test +i\r\n");
+        assert_eq!(&get_client_value(&client)[..], "MODE #test +i\r\n");
         Ok(())
     }
 
@@ -1808,7 +1811,7 @@ mod test {
             &[Mode::Plus(ChannelMode::Oper, Some("test".to_owned()))],
         )?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "MODE #test +o test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "MODE #test +o test\r\n");
         Ok(())
     }
 
@@ -1817,7 +1820,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_samode("#test", "+i", "")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "SAMODE #test +i\r\n");
+        assert_eq!(&get_client_value(&client)[..], "SAMODE #test +i\r\n");
         Ok(())
     }
 
@@ -1826,7 +1829,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_samode("#test", "+o", "test")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "SAMODE #test +o test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "SAMODE #test +o test\r\n");
         Ok(())
     }
 
@@ -1835,7 +1838,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_sanick("test", "test2")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "SANICK test test2\r\n");
+        assert_eq!(&get_client_value(&client)[..], "SANICK test test2\r\n");
         Ok(())
     }
 
@@ -1844,7 +1847,7 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_invite("test", "#test")?;
         client.stream()?.collect().await?;
-        assert_eq!(&get_client_value(client)[..], "INVITE test #test\r\n");
+        assert_eq!(&get_client_value(&client)[..], "INVITE test #test\r\n");
         Ok(())
     }
 
@@ -1855,7 +1858,7 @@ mod test {
         client.send_ctcp("test", "LINE1\r\nLINE2\r\nLINE3")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test \u{001}LINE1\u{001}\r\nPRIVMSG test \u{001}LINE2\u{001}\r\nPRIVMSG test \u{001}LINE3\u{001}\r\n"
         );
         Ok(())
@@ -1868,7 +1871,7 @@ mod test {
         client.send_action("test", "tests.")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test :\u{001}ACTION tests.\u{001}\r\n"
         );
         Ok(())
@@ -1881,7 +1884,7 @@ mod test {
         client.send_finger("test")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test \u{001}FINGER\u{001}\r\n"
         );
         Ok(())
@@ -1894,7 +1897,7 @@ mod test {
         client.send_version("test")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test \u{001}VERSION\u{001}\r\n"
         );
         Ok(())
@@ -1907,7 +1910,7 @@ mod test {
         client.send_source("test")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test \u{001}SOURCE\u{001}\r\n"
         );
         Ok(())
@@ -1920,7 +1923,7 @@ mod test {
         client.send_user_info("test")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test \u{001}USERINFO\u{001}\r\n"
         );
         Ok(())
@@ -1932,8 +1935,8 @@ mod test {
         let mut client = Client::from_config(test_config()).await?;
         client.send_ctcp_ping("test")?;
         client.stream()?.collect().await?;
-        let val = get_client_value(client);
-        println!("{}", val);
+        let val = get_client_value(&client);
+        println!("{val}");
         assert!(val.starts_with("PRIVMSG test :\u{001}PING "));
         assert!(val.ends_with("\u{001}\r\n"));
         Ok(())
@@ -1946,7 +1949,7 @@ mod test {
         client.send_time("test")?;
         client.stream()?.collect().await?;
         assert_eq!(
-            &get_client_value(client)[..],
+            &get_client_value(&client)[..],
             "PRIVMSG test \u{001}TIME\u{001}\r\n"
         );
         Ok(())

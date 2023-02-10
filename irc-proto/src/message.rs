@@ -1,5 +1,6 @@
 //! A module providing a data structure for messages to and from IRC servers.
 use std::borrow::ToOwned;
+use std::convert;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 
@@ -10,11 +11,11 @@ use crate::error::{MessageParseError, ProtocolError};
 use crate::prefix::Prefix;
 
 /// A data structure representing an IRC message according to the protocol specification. It
-/// consists of a collection of IRCv3 tags, a prefix (describing the source of the message), and
+/// consists of a collection of `IRCv3` tags, a prefix (describing the source of the message), and
 /// the protocol command. If the command is unknown, it is treated as a special raw command that
 /// consists of a collection of arguments and the special suffix argument. Otherwise, the command
 /// is parsed into a more useful form as described in [Command](../command/enum.Command.html).
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     /// Message tags as defined by [IRCv3.2](http://ircv3.net/specs/core/message-tags-3.2.html).
     /// These tags are used to add extended information to the given message, and are commonly used
@@ -44,22 +45,22 @@ impl Message {
         prefix: Option<&str>,
         command: &str,
         args: Vec<&str>,
-    ) -> Result<Message, MessageParseError> {
-        Message::with_tags(None, prefix, command, args)
+    ) -> Result<Self, MessageParseError> {
+        Self::with_tags(None, prefix, command, args)
     }
 
     /// Creates a new IRCv3.2 message from the given components, including message tags. These tags
-    /// are used to add extended information to the given message, and are commonly used in IRCv3
+    /// are used to add extended information to the given message, and are commonly used in `IRCv3`
     /// extensions to the IRC protocol.
     pub fn with_tags(
         tags: Option<Vec<Tag>>,
         prefix: Option<&str>,
         command: &str,
         args: Vec<&str>,
-    ) -> Result<Message, error::MessageParseError> {
-        Ok(Message {
+    ) -> Result<Self, error::MessageParseError> {
+        Ok(Self {
             tags,
-            prefix: prefix.map(|p| p.into()),
+            prefix: prefix.map(convert::Into::into),
             command: Command::new(command, args)?,
         })
     }
@@ -77,12 +78,13 @@ impl Message {
     /// assert_eq!(message.source_nickname(), Some("nickname"));
     /// # }
     /// ```
+    #[must_use]
     pub fn source_nickname(&self) -> Option<&str> {
         // <prefix> ::= <servername> | <nick> [ '!' <user> ] [ '@' <host> ]
         // <servername> ::= <host>
         self.prefix.as_ref().and_then(|p| match p {
             Prefix::Nickname(name, _, _) => Some(&name[..]),
-            _ => None,
+            Prefix::ServerName(_) => None,
         })
     }
 
@@ -105,6 +107,7 @@ impl Message {
     /// assert_eq!(msg2.response_target(), Some("ada"));
     /// # }
     /// ```
+    #[must_use]
     pub fn response_target(&self) -> Option<&str> {
         match self.command {
             Command::PRIVMSG(ref target, _) if target.is_channel_name() => Some(target),
@@ -144,18 +147,18 @@ impl fmt::Display for Message {
             ret.push(' ');
         }
         if let Some(ref prefix) = self.prefix {
-            write!(ret, ":{} ", prefix).unwrap();
+            write!(ret, ":{prefix} ").unwrap();
         }
         let cmd: String = From::from(&self.command);
         ret.push_str(&cmd);
         ret.push_str("\r\n");
-        write!(f, "{}", ret)
+        write!(f, "{ret}")
     }
 }
 
 impl From<Command> for Message {
-    fn from(cmd: Command) -> Message {
-        Message {
+    fn from(cmd: Command) -> Self {
+        Self {
             tags: None,
             prefix: None,
             command: cmd,
@@ -166,7 +169,7 @@ impl From<Command> for Message {
 impl FromStr for Message {
     type Err = ProtocolError;
 
-    fn from_str(s: &str) -> Result<Message, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
             return Err(ProtocolError::InvalidMessage {
                 string: s.to_owned(),
@@ -217,7 +220,7 @@ impl FromStr for Message {
             let suffix = state
                 .find(" :")
                 .map(|i| &state[i + 2..state.len() - line_ending_len]);
-            state = state.find(" :").map_or("", |i| &state[..i + 1]);
+            state = state.find(" :").map_or("", |i| &state[..=i]);
             suffix
         } else {
             state = &state[..state.len() - line_ending_len];
@@ -249,24 +252,34 @@ impl FromStr for Message {
             args.push(suffix);
         }
 
-        Message::with_tags(tags, prefix, command, args).map_err(|e| ProtocolError::InvalidMessage {
+        Self::with_tags(tags, prefix, command, args).map_err(|e| ProtocolError::InvalidMessage {
             string: s.to_owned(),
             cause: e,
         })
     }
 }
 
-impl<'a> From<&'a str> for Message {
-    fn from(s: &'a str) -> Message {
-        s.parse().unwrap()
+impl<'a> TryFrom<&'a str> for Message {
+    type Error = error::ProtocolError;
+
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        s.parse().map_or_else(
+            |_| {
+                Err(ProtocolError::InvalidMessage {
+                    string: s.to_string(),
+                    cause: MessageParseError::InvalidCommand,
+                })
+            },
+            Ok,
+        )
     }
 }
 
 /// A message tag as defined by [IRCv3.2](http://ircv3.net/specs/core/message-tags-3.2.html).
 /// It consists of a tag key, and an optional value for the tag. Each message can contain a number
 /// of tags (in the string format, they are separated by semicolons). Tags are used to add extended
-/// information to a message under IRCv3.
-#[derive(Clone, PartialEq, Debug)]
+/// information to a message under `IRCv3`.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tag(pub String, pub Option<String>);
 
 fn escape_tag_value(msg: &mut String, value: &str) {
@@ -306,7 +319,10 @@ fn unescape_tag_value(value: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::{Message, Tag};
-    use crate::command::Command::{Raw, PRIVMSG, QUIT};
+    use crate::{
+        command::Command::{Raw, PRIVMSG, QUIT},
+        error::ProtocolError,
+    };
 
     #[test]
     fn new() {
@@ -318,7 +334,7 @@ mod test {
         assert_eq!(
             Message::new(None, "PRIVMSG", vec!["test", "Testing!"]).unwrap(),
             message
-        )
+        );
     }
 
     #[test]
@@ -436,7 +452,7 @@ mod test {
                 .parse::<Message>()
                 .unwrap(),
             message
-        )
+        );
     }
 
     #[test]
@@ -475,15 +491,16 @@ mod test {
             prefix: None,
             command: PRIVMSG("test".to_string(), "Testing!".to_string()),
         };
-        let msg: Message = "PRIVMSG test :Testing!\r\n".into();
-        assert_eq!(msg, message);
+        let msg: Result<Message, ProtocolError> = "PRIVMSG test :Testing!\r\n".try_into();
+        assert_eq!(msg.unwrap(), message);
         let message = Message {
             tags: None,
             prefix: Some("test!test@test".into()),
             command: PRIVMSG("test".to_string(), "Still testing!".to_string()),
         };
-        let msg: Message = ":test!test@test PRIVMSG test :Still testing!\r\n".into();
-        assert_eq!(msg, message);
+        let msg: Result<Message, ProtocolError> =
+            ":test!test@test PRIVMSG test :Still testing!\r\n".try_into();
+        assert_eq!(msg.unwrap(), message);
     }
 
     #[test]
@@ -498,8 +515,9 @@ mod test {
                 vec![format!("ARG:test"), format!("Testing!")],
             ),
         };
-        let msg: Message = ":test!test@test COMMAND ARG:test :Testing!\r\n".into();
-        assert_eq!(msg, message);
+        let msg: Result<Message, ProtocolError> =
+            ":test!test@test COMMAND ARG:test :Testing!\r\n".try_into();
+        assert_eq!(msg.unwrap(), message);
     }
 
     #[test]
@@ -509,14 +527,14 @@ mod test {
             prefix: None,
             command: QUIT(None),
         };
-        let msg: Message = "QUIT\r\n".into();
-        assert_eq!(msg, message);
+        let msg: Result<Message, ProtocolError> = "QUIT\r\n".try_into();
+        assert_eq!(msg.unwrap(), message);
     }
 
     #[test]
     #[should_panic]
     fn to_message_invalid_format() {
-        let _: Message = ":invalid :message".into();
+        let _: Result<Message, ProtocolError> = ":invalid :message".try_into();
     }
 
     #[test]

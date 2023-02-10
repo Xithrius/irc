@@ -51,8 +51,8 @@ fn strip_formatting(buf: &mut String) {
 }
 
 impl Parser {
-    fn new() -> Self {
-        Parser {
+    const fn new() -> Self {
+        Self {
             state: ParserState::Text,
         }
     }

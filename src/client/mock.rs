@@ -14,13 +14,13 @@ pub struct MockStream {
 
 impl MockStream {
     /// Creates a new mock stream with nothing to read.
-    pub fn empty() -> MockStream {
-        MockStream::new(&[])
+    pub fn empty() -> Self {
+        Self::new(&[])
     }
 
     /// Creates a new mock stream with the specified bytes to read.
-    pub fn new(initial: &[u8]) -> MockStream {
-        MockStream {
+    pub fn new(initial: &[u8]) -> Self {
+        Self {
             written: Cursor::new(vec![]),
             received: Cursor::new(initial.to_owned()),
         }

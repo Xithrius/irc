@@ -9,7 +9,7 @@ macro_rules! make_response {
         /// [Modern docs](https://modern.ircdocs.horse/#numerics) (henceforth referred to as
         /// Modern). All commands are documented with their expected form from the RFC, and any
         /// useful, additional information about the response code.
-        #[derive(Clone, Copy, Debug, PartialEq)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         #[repr(u16)]
         pub enum Response {
             $($(#[$attr])+ $variant = $value),+
@@ -410,8 +410,9 @@ impl Response {
     /// Determines whether or not this response is an error response.
     ///
     /// This error consideration is according to RFC2812, but is rather simplistic. It considers all
-    /// response codes above 400 to be errors, which misclassifies some extensions (e.g. from IRCv3)
+    /// response codes above 400 to be errors, which misclassifies some extensions (e.g. from `IRCv3`)
     /// that add responses and errors both in the same range (typically 700s or 900s).
+    #[must_use]
     pub fn is_error(&self) -> bool {
         *self as u16 >= 400
     }
@@ -419,15 +420,11 @@ impl Response {
 
 impl FromStr for Response {
     type Err = &'static str;
-    fn from_str(s: &str) -> Result<Response, &'static str> {
-        if let Ok(rc) = s.parse() {
-            match Response::from_u16(rc) {
-                Some(r) => Ok(r),
-                None => Err("Failed to parse due to unknown response code."),
-            }
-        } else {
-            Err("Failed to parse response code.")
-        }
+    fn from_str(s: &str) -> Result<Self, &'static str> {
+        s.parse()
+            .map_or(Err("Failed to parse response code."), |rc| {
+                Self::from_u16(rc).ok_or("Failed to parse due to unknown response code.")
+            })
     }
 }
 

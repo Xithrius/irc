@@ -1,6 +1,7 @@
 //! Enumeration of all available client commands.
 use std::cmp::Ordering;
 use std::str::FromStr;
+use std::{borrow, string};
 
 use crate::chan::ChannelExt;
 use crate::error::MessageParseError;
@@ -10,8 +11,8 @@ use crate::response::Response;
 /// List of all client commands as defined in [RFC 2812](http://tools.ietf.org/html/rfc2812). This
 /// also includes commands from the
 /// [capabilities extension](https://tools.ietf.org/html/draft-mitchell-irc-capabilities-01).
-/// Additionally, this includes some common additional commands from popular IRCds.
-#[derive(Clone, Debug, PartialEq)]
+/// Additionally, this includes some common additional commands from popular `IRCds`.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     // 3.1 Connection Registration
     /// PASS :password
@@ -215,14 +216,14 @@ fn stringify(cmd: &str, args: &[&str]) -> String {
             } else {
                 ""
             };
-            format!("{}{}{} {}{}", cmd, sp, args, co, suffix)
+            format!("{cmd}{sp}{args} {co}{suffix}")
         }
         None => cmd.to_string(),
     }
 }
 
 impl<'a> From<&'a Command> for String {
-    fn from(cmd: &'a Command) -> String {
+    fn from(cmd: &'a Command) -> Self {
         match *cmd {
             Command::PASS(ref p) => stringify("PASS", &[p]),
             Command::NICK(ref n) => stringify("NICK", &[n]),
@@ -231,7 +232,7 @@ impl<'a> From<&'a Command> for String {
             Command::UserMODE(ref u, ref m) => format!(
                 "MODE {}{}",
                 u,
-                m.iter().fold(String::new(), |mut acc, mode| {
+                m.iter().fold(Self::new(), |mut acc, mode| {
                     acc.push(' ');
                     acc.push_str(&mode.to_string());
                     acc
@@ -252,7 +253,7 @@ impl<'a> From<&'a Command> for String {
             Command::ChannelMODE(ref u, ref m) => format!(
                 "MODE {}{}",
                 u,
-                m.iter().fold(String::new(), |mut acc, mode| {
+                m.iter().fold(Self::new(), |mut acc, mode| {
                     acc.push(' ');
                     acc.push_str(&mode.to_string());
                     acc
@@ -418,44 +419,42 @@ impl<'a> From<&'a Command> for String {
 
 impl Command {
     /// Constructs a new Command.
-    pub fn new(cmd: &str, args: Vec<&str>) -> Result<Command, MessageParseError> {
+    pub fn new(cmd: &str, args: Vec<&str>) -> Result<Self, MessageParseError> {
         Ok(if cmd.eq_ignore_ascii_case("PASS") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::PASS(args[0].to_owned())
             } else {
-                Command::PASS(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("NICK") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::NICK(args[0].to_owned())
             } else {
-                Command::NICK(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("USER") {
-            if args.len() != 4 {
-                raw(cmd, args)
+            if args.len() == 4 {
+                Self::USER(args[0].to_owned(), args[1].to_owned(), args[3].to_owned())
             } else {
-                Command::USER(args[0].to_owned(), args[1].to_owned(), args[3].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("OPER") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::OPER(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::OPER(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("MODE") {
             if args.is_empty() {
                 raw(cmd, args)
             } else if args[0].is_channel_name() {
-                Command::ChannelMODE(args[0].to_owned(), Mode::as_channel_modes(&args[1..])?)
+                Self::ChannelMODE(args[0].to_owned(), Mode::as_channel_modes(&args[1..])?)
             } else {
-                Command::UserMODE(args[0].to_owned(), Mode::as_user_modes(&args[1..])?)
+                Self::UserMODE(args[0].to_owned(), Mode::as_user_modes(&args[1..])?)
             }
         } else if cmd.eq_ignore_ascii_case("SERVICE") {
-            if args.len() != 6 {
-                raw(cmd, args)
-            } else {
-                Command::SERVICE(
+            if args.len() == 6 {
+                Self::SERVICE(
                     args[0].to_owned(),
                     args[1].to_owned(),
                     args[2].to_owned(),
@@ -463,28 +462,30 @@ impl Command {
                     args[4].to_owned(),
                     args[5].to_owned(),
                 )
+            } else {
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("QUIT") {
             if args.is_empty() {
-                Command::QUIT(None)
+                Self::QUIT(None)
             } else if args.len() == 1 {
-                Command::QUIT(Some(args[0].to_owned()))
+                Self::QUIT(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SQUIT") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::SQUIT(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::SQUIT(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("JOIN") {
             if args.len() == 1 {
-                Command::JOIN(args[0].to_owned(), None, None)
+                Self::JOIN(args[0].to_owned(), None, None)
             } else if args.len() == 2 {
-                Command::JOIN(args[0].to_owned(), Some(args[1].to_owned()), None)
+                Self::JOIN(args[0].to_owned(), Some(args[1].to_owned()), None)
             } else if args.len() == 3 {
-                Command::JOIN(
+                Self::JOIN(
                     args[0].to_owned(),
                     Some(args[1].to_owned()),
                     Some(args[2].to_owned()),
@@ -494,195 +495,195 @@ impl Command {
             }
         } else if cmd.eq_ignore_ascii_case("PART") {
             if args.len() == 1 {
-                Command::PART(args[0].to_owned(), None)
+                Self::PART(args[0].to_owned(), None)
             } else if args.len() == 2 {
-                Command::PART(args[0].to_owned(), Some(args[1].to_owned()))
+                Self::PART(args[0].to_owned(), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("TOPIC") {
             if args.len() == 1 {
-                Command::TOPIC(args[0].to_owned(), None)
+                Self::TOPIC(args[0].to_owned(), None)
             } else if args.len() == 2 {
-                Command::TOPIC(args[0].to_owned(), Some(args[1].to_owned()))
+                Self::TOPIC(args[0].to_owned(), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("NAMES") {
             if args.is_empty() {
-                Command::NAMES(None, None)
+                Self::NAMES(None, None)
             } else if args.len() == 1 {
-                Command::NAMES(Some(args[0].to_owned()), None)
+                Self::NAMES(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::NAMES(Some(args[0].to_owned()), Some(args[1].to_owned()))
+                Self::NAMES(Some(args[0].to_owned()), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("LIST") {
             if args.is_empty() {
-                Command::LIST(None, None)
+                Self::LIST(None, None)
             } else if args.len() == 1 {
-                Command::LIST(Some(args[0].to_owned()), None)
+                Self::LIST(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::LIST(Some(args[0].to_owned()), Some(args[1].to_owned()))
+                Self::LIST(Some(args[0].to_owned()), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("INVITE") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::INVITE(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::INVITE(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("KICK") {
             if args.len() == 3 {
-                Command::KICK(
+                Self::KICK(
                     args[0].to_owned(),
                     args[1].to_owned(),
                     Some(args[2].to_owned()),
                 )
             } else if args.len() == 2 {
-                Command::KICK(args[0].to_owned(), args[1].to_owned(), None)
+                Self::KICK(args[0].to_owned(), args[1].to_owned(), None)
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("PRIVMSG") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::PRIVMSG(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::PRIVMSG(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("NOTICE") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::NOTICE(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::NOTICE(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("MOTD") {
             if args.is_empty() {
-                Command::MOTD(None)
+                Self::MOTD(None)
             } else if args.len() == 1 {
-                Command::MOTD(Some(args[0].to_owned()))
+                Self::MOTD(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("LUSERS") {
             if args.is_empty() {
-                Command::LUSERS(None, None)
+                Self::LUSERS(None, None)
             } else if args.len() == 1 {
-                Command::LUSERS(Some(args[0].to_owned()), None)
+                Self::LUSERS(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::LUSERS(Some(args[0].to_owned()), Some(args[1].to_owned()))
+                Self::LUSERS(Some(args[0].to_owned()), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("VERSION") {
             if args.is_empty() {
-                Command::VERSION(None)
+                Self::VERSION(None)
             } else if args.len() == 1 {
-                Command::VERSION(Some(args[0].to_owned()))
+                Self::VERSION(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("STATS") {
             if args.is_empty() {
-                Command::STATS(None, None)
+                Self::STATS(None, None)
             } else if args.len() == 1 {
-                Command::STATS(Some(args[0].to_owned()), None)
+                Self::STATS(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::STATS(Some(args[0].to_owned()), Some(args[1].to_owned()))
+                Self::STATS(Some(args[0].to_owned()), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("LINKS") {
             if args.is_empty() {
-                Command::LINKS(None, None)
+                Self::LINKS(None, None)
             } else if args.len() == 1 {
-                Command::LINKS(Some(args[0].to_owned()), None)
+                Self::LINKS(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::LINKS(Some(args[0].to_owned()), Some(args[1].to_owned()))
+                Self::LINKS(Some(args[0].to_owned()), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("TIME") {
             if args.is_empty() {
-                Command::TIME(None)
+                Self::TIME(None)
             } else if args.len() == 1 {
-                Command::TIME(Some(args[0].to_owned()))
+                Self::TIME(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("CONNECT") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::CONNECT(args[0].to_owned(), args[1].to_owned(), None)
             } else {
-                Command::CONNECT(args[0].to_owned(), args[1].to_owned(), None)
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("TRACE") {
             if args.is_empty() {
-                Command::TRACE(None)
+                Self::TRACE(None)
             } else if args.len() == 1 {
-                Command::TRACE(Some(args[0].to_owned()))
+                Self::TRACE(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("ADMIN") {
             if args.is_empty() {
-                Command::ADMIN(None)
+                Self::ADMIN(None)
             } else if args.len() == 1 {
-                Command::ADMIN(Some(args[0].to_owned()))
+                Self::ADMIN(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("INFO") {
             if args.is_empty() {
-                Command::INFO(None)
+                Self::INFO(None)
             } else if args.len() == 1 {
-                Command::INFO(Some(args[0].to_owned()))
+                Self::INFO(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SERVLIST") {
             if args.is_empty() {
-                Command::SERVLIST(None, None)
+                Self::SERVLIST(None, None)
             } else if args.len() == 1 {
-                Command::SERVLIST(Some(args[0].to_owned()), None)
+                Self::SERVLIST(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::SERVLIST(Some(args[0].to_owned()), Some(args[1].to_owned()))
+                Self::SERVLIST(Some(args[0].to_owned()), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SQUERY") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::SQUERY(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::SQUERY(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("WHO") {
             if args.is_empty() {
-                Command::WHO(None, None)
+                Self::WHO(None, None)
             } else if args.len() == 1 {
-                Command::WHO(Some(args[0].to_owned()), None)
+                Self::WHO(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::WHO(Some(args[0].to_owned()), Some(args[1] == "o"))
+                Self::WHO(Some(args[0].to_owned()), Some(args[1] == "o"))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("WHOIS") {
             if args.len() == 1 {
-                Command::WHOIS(None, args[0].to_owned())
+                Self::WHOIS(None, args[0].to_owned())
             } else if args.len() == 2 {
-                Command::WHOIS(Some(args[0].to_owned()), args[1].to_owned())
+                Self::WHOIS(Some(args[0].to_owned()), args[1].to_owned())
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("WHOWAS") {
             if args.len() == 1 {
-                Command::WHOWAS(args[0].to_owned(), None, None)
+                Self::WHOWAS(args[0].to_owned(), None, None)
             } else if args.len() == 2 {
-                Command::WHOWAS(args[0].to_owned(), None, Some(args[1].to_owned()))
+                Self::WHOWAS(args[0].to_owned(), None, Some(args[1].to_owned()))
             } else if args.len() == 3 {
-                Command::WHOWAS(
+                Self::WHOWAS(
                     args[0].to_owned(),
                     Some(args[1].to_owned()),
                     Some(args[2].to_owned()),
@@ -691,66 +692,66 @@ impl Command {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("KILL") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::KILL(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::KILL(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("PING") {
             if args.len() == 1 {
-                Command::PING(args[0].to_owned(), None)
+                Self::PING(args[0].to_owned(), None)
             } else if args.len() == 2 {
-                Command::PING(args[0].to_owned(), Some(args[1].to_owned()))
+                Self::PING(args[0].to_owned(), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("PONG") {
             if args.len() == 1 {
-                Command::PONG(args[0].to_owned(), None)
+                Self::PONG(args[0].to_owned(), None)
             } else if args.len() == 2 {
-                Command::PONG(args[0].to_owned(), Some(args[1].to_owned()))
+                Self::PONG(args[0].to_owned(), Some(args[1].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("ERROR") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::ERROR(args[0].to_owned())
             } else {
-                Command::ERROR(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("AWAY") {
             if args.is_empty() {
-                Command::AWAY(None)
+                Self::AWAY(None)
             } else if args.len() == 1 {
-                Command::AWAY(Some(args[0].to_owned()))
+                Self::AWAY(Some(args[0].to_owned()))
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("REHASH") {
             if args.is_empty() {
-                Command::REHASH
+                Self::REHASH
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("DIE") {
             if args.is_empty() {
-                Command::DIE
+                Self::DIE
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("RESTART") {
             if args.is_empty() {
-                Command::RESTART
+                Self::RESTART
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SUMMON") {
             if args.len() == 1 {
-                Command::SUMMON(args[0].to_owned(), None, None)
+                Self::SUMMON(args[0].to_owned(), None, None)
             } else if args.len() == 2 {
-                Command::SUMMON(args[0].to_owned(), Some(args[1].to_owned()), None)
+                Self::SUMMON(args[0].to_owned(), Some(args[1].to_owned()), None)
             } else if args.len() == 3 {
-                Command::SUMMON(
+                Self::SUMMON(
                     args[0].to_owned(),
                     Some(args[1].to_owned()),
                     Some(args[2].to_owned()),
@@ -759,32 +760,30 @@ impl Command {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("USERS") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::USERS(Some(args[0].to_owned()))
             } else {
-                Command::USERS(Some(args[0].to_owned()))
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("WALLOPS") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::WALLOPS(args[0].to_owned())
             } else {
-                Command::WALLOPS(args[0].to_owned())
+                raw(cmd, args)
             }
-        } else if cmd.eq_ignore_ascii_case("USERHOST") {
-            Command::USERHOST(args.into_iter().map(|s| s.to_owned()).collect())
-        } else if cmd.eq_ignore_ascii_case("ISON") {
-            Command::USERHOST(args.into_iter().map(|s| s.to_owned()).collect())
+        } else if cmd.eq_ignore_ascii_case("USERHOST") || cmd.eq_ignore_ascii_case("ISON") {
+            Self::USERHOST(args.into_iter().map(borrow::ToOwned::to_owned).collect())
         } else if cmd.eq_ignore_ascii_case("SAJOIN") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::SAJOIN(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::SAJOIN(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SAMODE") {
             if args.len() == 2 {
-                Command::SAMODE(args[0].to_owned(), args[1].to_owned(), None)
+                Self::SAMODE(args[0].to_owned(), args[1].to_owned(), None)
             } else if args.len() == 3 {
-                Command::SAMODE(
+                Self::SAMODE(
                     args[0].to_owned(),
                     args[1].to_owned(),
                     Some(args[2].to_owned()),
@@ -793,84 +792,82 @@ impl Command {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SANICK") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::SANICK(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::SANICK(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SAPART") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::SAPART(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::SAPART(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("SAQUIT") {
-            if args.len() != 2 {
-                raw(cmd, args)
+            if args.len() == 2 {
+                Self::SAQUIT(args[0].to_owned(), args[1].to_owned())
             } else {
-                Command::SAQUIT(args[0].to_owned(), args[1].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("NICKSERV") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::NICKSERV(args[1..].iter().map(string::ToString::to_string).collect())
             } else {
-                Command::NICKSERV(args[1..].iter().map(|s| s.to_string()).collect())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("CHANSERV") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::CHANSERV(args[0].to_owned())
             } else {
-                Command::CHANSERV(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("OPERSERV") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::OPERSERV(args[0].to_owned())
             } else {
-                Command::OPERSERV(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("BOTSERV") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::BOTSERV(args[0].to_owned())
             } else {
-                Command::BOTSERV(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("HOSTSERV") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::HOSTSERV(args[0].to_owned())
             } else {
-                Command::HOSTSERV(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("MEMOSERV") {
-            if args.len() != 1 {
-                raw(cmd, args)
+            if args.len() == 1 {
+                Self::MEMOSERV(args[0].to_owned())
             } else {
-                Command::MEMOSERV(args[0].to_owned())
+                raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("CAP") {
             if args.len() == 1 {
-                if let Ok(cmd) = args[0].parse() {
-                    Command::CAP(None, cmd, None, None)
-                } else {
-                    raw(cmd, args)
-                }
+                args[0]
+                    .parse()
+                    .map_or_else(|_| raw(cmd, args), |cmd| Self::CAP(None, cmd, None, None))
             } else if args.len() == 2 {
                 if let Ok(cmd) = args[0].parse() {
-                    Command::CAP(None, cmd, Some(args[1].to_owned()), None)
+                    Self::CAP(None, cmd, Some(args[1].to_owned()), None)
                 } else if let Ok(cmd) = args[1].parse() {
-                    Command::CAP(Some(args[0].to_owned()), cmd, None, None)
+                    Self::CAP(Some(args[0].to_owned()), cmd, None, None)
                 } else {
                     raw(cmd, args)
                 }
             } else if args.len() == 3 {
                 if let Ok(cmd) = args[0].parse() {
-                    Command::CAP(
+                    Self::CAP(
                         None,
                         cmd,
                         Some(args[1].to_owned()),
                         Some(args[2].to_owned()),
                     )
                 } else if let Ok(cmd) = args[1].parse() {
-                    Command::CAP(
+                    Self::CAP(
                         Some(args[0].to_owned()),
                         cmd,
                         Some(args[2].to_owned()),
@@ -881,7 +878,7 @@ impl Command {
                 }
             } else if args.len() == 4 {
                 if let Ok(cmd) = args[1].parse() {
-                    Command::CAP(
+                    Self::CAP(
                         Some(args[0].to_owned()),
                         cmd,
                         Some(args[2].to_owned()),
@@ -895,57 +892,67 @@ impl Command {
             }
         } else if cmd.eq_ignore_ascii_case("AUTHENTICATE") {
             if args.len() == 1 {
-                Command::AUTHENTICATE(args[0].to_owned())
+                Self::AUTHENTICATE(args[0].to_owned())
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("ACCOUNT") {
             if args.len() == 1 {
-                Command::ACCOUNT(args[0].to_owned())
+                Self::ACCOUNT(args[0].to_owned())
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("METADATA") {
             match args.len().cmp(&2) {
                 Ordering::Equal => match args[1].parse() {
-                    Ok(c) => Command::METADATA(args[0].to_owned(), Some(c), None),
+                    Ok(c) => Self::METADATA(args[0].to_owned(), Some(c), None),
                     Err(_) => raw(cmd, args),
                 },
                 Ordering::Greater => match args[1].parse() {
-                    Ok(c) => Command::METADATA(
+                    Ok(c) => Self::METADATA(
                         args[0].to_owned(),
                         Some(c),
-                        Some(args.into_iter().skip(1).map(|s| s.to_owned()).collect()),
+                        Some(
+                            args.into_iter()
+                                .skip(1)
+                                .map(borrow::ToOwned::to_owned)
+                                .collect(),
+                        ),
                     ),
                     Err(_) => {
                         if args.len() == 3 {
-                            Command::METADATA(
+                            Self::METADATA(
                                 args[0].to_owned(),
                                 None,
-                                Some(args.into_iter().skip(1).map(|s| s.to_owned()).collect()),
+                                Some(
+                                    args.into_iter()
+                                        .skip(1)
+                                        .map(borrow::ToOwned::to_owned)
+                                        .collect(),
+                                ),
                             )
                         } else {
                             raw(cmd, args)
                         }
                     }
                 },
-                _ => raw(cmd, args),
+                Ordering::Less => raw(cmd, args),
             }
         } else if cmd.eq_ignore_ascii_case("MONITOR") {
             if args.len() == 2 {
-                Command::MONITOR(args[0].to_owned(), Some(args[1].to_owned()))
+                Self::MONITOR(args[0].to_owned(), Some(args[1].to_owned()))
             } else if args.len() == 1 {
-                Command::MONITOR(args[0].to_owned(), None)
+                Self::MONITOR(args[0].to_owned(), None)
             } else {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("BATCH") {
             if args.len() == 1 {
-                Command::BATCH(args[0].to_owned(), None, None)
+                Self::BATCH(args[0].to_owned(), None, None)
             } else if args.len() == 2 {
-                Command::BATCH(args[0].to_owned(), Some(args[1].parse().unwrap()), None)
+                Self::BATCH(args[0].to_owned(), Some(args[1].parse().unwrap()), None)
             } else if args.len() > 2 {
-                Command::BATCH(
+                Self::BATCH(
                     args[0].to_owned(),
                     Some(args[1].parse().unwrap()),
                     Some(args.iter().skip(2).map(|&s| s.to_owned()).collect()),
@@ -955,12 +962,15 @@ impl Command {
             }
         } else if cmd.eq_ignore_ascii_case("CHGHOST") {
             if args.len() == 2 {
-                Command::CHGHOST(args[0].to_owned(), args[1].to_owned())
+                Self::CHGHOST(args[0].to_owned(), args[1].to_owned())
             } else {
                 raw(cmd, args)
             }
         } else if let Ok(resp) = cmd.parse() {
-            Command::Response(resp, args.into_iter().map(|s| s.to_owned()).collect())
+            Self::Response(
+                resp,
+                args.into_iter().map(borrow::ToOwned::to_owned).collect(),
+            )
         } else {
             raw(cmd, args)
         })
@@ -971,12 +981,12 @@ impl Command {
 fn raw(cmd: &str, args: Vec<&str>) -> Command {
     Command::Raw(
         cmd.to_owned(),
-        args.into_iter().map(|s| s.to_owned()).collect(),
+        args.into_iter().map(borrow::ToOwned::to_owned).collect(),
     )
 }
 
 /// A list of all of the subcommands for the capabilities extension.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CapSubCommand {
     /// Requests a list of the server's capabilities.
     LS,
@@ -998,16 +1008,17 @@ pub enum CapSubCommand {
 
 impl CapSubCommand {
     /// Gets the string that corresponds to this subcommand.
+    #[must_use]
     pub fn to_str(&self) -> &str {
         match *self {
-            CapSubCommand::LS => "LS",
-            CapSubCommand::LIST => "LIST",
-            CapSubCommand::REQ => "REQ",
-            CapSubCommand::ACK => "ACK",
-            CapSubCommand::NAK => "NAK",
-            CapSubCommand::END => "END",
-            CapSubCommand::NEW => "NEW",
-            CapSubCommand::DEL => "DEL",
+            Self::LS => "LS",
+            Self::LIST => "LIST",
+            Self::REQ => "REQ",
+            Self::ACK => "ACK",
+            Self::NAK => "NAK",
+            Self::END => "END",
+            Self::NEW => "NEW",
+            Self::DEL => "DEL",
         }
     }
 }
@@ -1015,23 +1026,23 @@ impl CapSubCommand {
 impl FromStr for CapSubCommand {
     type Err = MessageParseError;
 
-    fn from_str(s: &str) -> Result<CapSubCommand, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.eq_ignore_ascii_case("LS") {
-            Ok(CapSubCommand::LS)
+            Ok(Self::LS)
         } else if s.eq_ignore_ascii_case("LIST") {
-            Ok(CapSubCommand::LIST)
+            Ok(Self::LIST)
         } else if s.eq_ignore_ascii_case("REQ") {
-            Ok(CapSubCommand::REQ)
+            Ok(Self::REQ)
         } else if s.eq_ignore_ascii_case("ACK") {
-            Ok(CapSubCommand::ACK)
+            Ok(Self::ACK)
         } else if s.eq_ignore_ascii_case("NAK") {
-            Ok(CapSubCommand::NAK)
+            Ok(Self::NAK)
         } else if s.eq_ignore_ascii_case("END") {
-            Ok(CapSubCommand::END)
+            Ok(Self::END)
         } else if s.eq_ignore_ascii_case("NEW") {
-            Ok(CapSubCommand::NEW)
+            Ok(Self::NEW)
         } else if s.eq_ignore_ascii_case("DEL") {
-            Ok(CapSubCommand::DEL)
+            Ok(Self::DEL)
         } else {
             Err(MessageParseError::InvalidSubcommand {
                 cmd: "CAP",
@@ -1043,7 +1054,7 @@ impl FromStr for CapSubCommand {
 
 /// A list of all the subcommands for the
 /// [metadata extension](http://ircv3.net/specs/core/metadata-3.2.html).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetadataSubCommand {
     /// Looks up the value for some keys.
     GET,
@@ -1057,12 +1068,13 @@ pub enum MetadataSubCommand {
 
 impl MetadataSubCommand {
     /// Gets the string that corresponds to this subcommand.
+    #[must_use]
     pub fn to_str(&self) -> &str {
         match *self {
-            MetadataSubCommand::GET => "GET",
-            MetadataSubCommand::LIST => "LIST",
-            MetadataSubCommand::SET => "SET",
-            MetadataSubCommand::CLEAR => "CLEAR",
+            Self::GET => "GET",
+            Self::LIST => "LIST",
+            Self::SET => "SET",
+            Self::CLEAR => "CLEAR",
         }
     }
 }
@@ -1070,15 +1082,15 @@ impl MetadataSubCommand {
 impl FromStr for MetadataSubCommand {
     type Err = MessageParseError;
 
-    fn from_str(s: &str) -> Result<MetadataSubCommand, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.eq_ignore_ascii_case("GET") {
-            Ok(MetadataSubCommand::GET)
+            Ok(Self::GET)
         } else if s.eq_ignore_ascii_case("LIST") {
-            Ok(MetadataSubCommand::LIST)
+            Ok(Self::LIST)
         } else if s.eq_ignore_ascii_case("SET") {
-            Ok(MetadataSubCommand::SET)
+            Ok(Self::SET)
         } else if s.eq_ignore_ascii_case("CLEAR") {
-            Ok(MetadataSubCommand::CLEAR)
+            Ok(Self::CLEAR)
         } else {
             Err(MessageParseError::InvalidSubcommand {
                 cmd: "METADATA",
@@ -1089,7 +1101,7 @@ impl FromStr for MetadataSubCommand {
 }
 
 /// [batch extension](http://ircv3.net/specs/extensions/batch-3.2.html).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BatchSubCommand {
     /// [NETSPLIT](http://ircv3.net/specs/extensions/batch/netsplit.html)
     NETSPLIT,
@@ -1101,11 +1113,12 @@ pub enum BatchSubCommand {
 
 impl BatchSubCommand {
     /// Gets the string that corresponds to this subcommand.
+    #[must_use]
     pub fn to_str(&self) -> &str {
         match *self {
-            BatchSubCommand::NETSPLIT => "NETSPLIT",
-            BatchSubCommand::NETJOIN => "NETJOIN",
-            BatchSubCommand::CUSTOM(ref s) => s,
+            Self::NETSPLIT => "NETSPLIT",
+            Self::NETJOIN => "NETJOIN",
+            Self::CUSTOM(ref s) => s,
         }
     }
 }
@@ -1113,13 +1126,13 @@ impl BatchSubCommand {
 impl FromStr for BatchSubCommand {
     type Err = MessageParseError;
 
-    fn from_str(s: &str) -> Result<BatchSubCommand, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.eq_ignore_ascii_case("NETSPLIT") {
-            Ok(BatchSubCommand::NETSPLIT)
+            Ok(Self::NETSPLIT)
         } else if s.eq_ignore_ascii_case("NETJOIN") {
-            Ok(BatchSubCommand::NETJOIN)
+            Ok(Self::NETJOIN)
         } else {
-            Ok(BatchSubCommand::CUSTOM(s.to_uppercase()))
+            Ok(Self::CUSTOM(s.to_uppercase()))
         }
     }
 }

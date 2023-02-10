@@ -25,7 +25,8 @@ impl Prefix {
     /// Prefix::new_from_str("example.com");
     /// # }
     /// ```
-    pub fn new_from_str(s: &str) -> Prefix {
+    #[must_use]
+    pub fn new_from_str(s: &str) -> Self {
         #[derive(Copy, Clone, Eq, PartialEq)]
         enum Active {
             Name,
@@ -64,15 +65,15 @@ impl Prefix {
                         Active::User => &mut user,
                         Active::Host => &mut host,
                     }
-                    .push(c)
+                    .push(c);
                 }
             }
         }
 
         if is_server {
-            Prefix::ServerName(name)
+            Self::ServerName(name)
         } else {
-            Prefix::Nickname(name, user, host)
+            Self::Nickname(name, user, host)
         }
     }
 }
@@ -82,7 +83,7 @@ impl FromStr for Prefix {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Prefix::new_from_str(s))
+        Ok(Self::new_from_str(s))
     }
 }
 
@@ -90,13 +91,13 @@ impl FromStr for Prefix {
 impl fmt::Display for Prefix {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Prefix::ServerName(name) => write!(f, "{}", name),
-            Prefix::Nickname(name, user, host) => match (&name[..], &user[..], &host[..]) {
+            Self::ServerName(name) => write!(f, "{name}"),
+            Self::Nickname(name, user, host) => match (&name[..], &user[..], &host[..]) {
                 ("", "", "") => write!(f, ""),
-                (name, "", "") => write!(f, "{}", name),
-                (name, user, "") => write!(f, "{}!{}", name, user),
-                (name, "", host) => write!(f, "{}@{}", name, host),
-                (name, user, host) => write!(f, "{}!{}@{}", name, user, host),
+                (name, "", "") => write!(f, "{name}"),
+                (name, user, "") => write!(f, "{name}!{user}"),
+                (name, "", host) => write!(f, "{name}@{host}"),
+                (name, user, host) => write!(f, "{name}!{user}@{host}"),
             },
         }
     }
@@ -104,7 +105,7 @@ impl fmt::Display for Prefix {
 
 impl<'a> From<&'a str> for Prefix {
     fn from(s: &str) -> Self {
-        Prefix::new_from_str(s)
+        Self::new_from_str(s)
     }
 }
 
@@ -115,16 +116,16 @@ mod test {
     // Checks that str -> parsed -> Display doesn't lose data
     fn test_parse(s: &str) -> Prefix {
         let prefix = Prefix::new_from_str(s);
-        let s2 = format!("{}", prefix);
+        let s2 = format!("{prefix}");
         assert_eq!(s, &s2);
         prefix
     }
 
     #[test]
     fn print() {
-        let s = format!("{}", Nickname("nick".into(), "".into(), "".into()));
+        let s = format!("{}", Nickname("nick".into(), String::new(), String::new()));
         assert_eq!(&s, "nick");
-        let s = format!("{}", Nickname("nick".into(), "user".into(), "".into()));
+        let s = format!("{}", Nickname("nick".into(), "user".into(), String::new()));
         assert_eq!(&s, "nick!user");
         let s = format!("{}", Nickname("nick".into(), "user".into(), "host".into()));
         assert_eq!(&s, "nick!user@host");
@@ -135,12 +136,12 @@ mod test {
         assert_eq!(
             test_parse("only_nick"),
             Nickname("only_nick".into(), String::new(), String::new())
-        )
+        );
     }
 
     #[test]
     fn parse_host() {
-        assert_eq!(test_parse("host.tld"), ServerName("host.tld".into()))
+        assert_eq!(test_parse("host.tld"), ServerName("host.tld".into()));
     }
 
     #[test]
@@ -148,7 +149,7 @@ mod test {
         assert_eq!(
             test_parse("test!nick"),
             Nickname("test".into(), "nick".into(), String::new())
-        )
+        );
     }
 
     #[test]
@@ -156,40 +157,40 @@ mod test {
         assert_eq!(
             test_parse("test!nick@host"),
             Nickname("test".into(), "nick".into(), "host".into())
-        )
+        );
     }
 
     #[test]
     fn parse_dot_and_symbols() {
         assert_eq!(
             test_parse("test.net@something"),
-            Nickname("test.net".into(), "".into(), "something".into())
-        )
+            Nickname("test.net".into(), String::new(), "something".into())
+        );
     }
 
     #[test]
     fn parse_danger_cases() {
         assert_eq!(
             test_parse("name@name!user"),
-            Nickname("name".into(), "".into(), "name!user".into())
+            Nickname("name".into(), String::new(), "name!user".into())
         );
         assert_eq!(
             // can't reverse the parse
             "name!@".parse::<Prefix>().unwrap(),
-            Nickname("name".into(), "".into(), "".into())
+            Nickname("name".into(), String::new(), String::new())
         );
         assert_eq!(
             // can't reverse the parse
             "name!@hostname".parse::<Prefix>().unwrap(),
-            Nickname("name".into(), "".into(), "hostname".into())
+            Nickname("name".into(), String::new(), "hostname".into())
         );
         assert_eq!(
             test_parse("name!.user"),
-            Nickname("name".into(), ".user".into(), "".into())
+            Nickname("name".into(), ".user".into(), String::new())
         );
         assert_eq!(
             test_parse("name!user.user"),
-            Nickname("name".into(), "user.user".into(), "".into())
+            Nickname("name".into(), "user.user".into(), String::new())
         );
         assert_eq!(
             test_parse("name!user@host.host"),
@@ -197,11 +198,11 @@ mod test {
         );
         assert_eq!(
             test_parse("!user"),
-            Nickname("".into(), "user".into(), "".into())
+            Nickname(String::new(), "user".into(), String::new())
         );
         assert_eq!(
             "!@host.host".parse::<Prefix>().unwrap(),
-            Nickname("".into(), "".into(), "host.host".into())
+            Nickname(String::new(), String::new(), "host.host".into())
         );
     }
 }

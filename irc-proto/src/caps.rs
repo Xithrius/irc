@@ -1,8 +1,8 @@
-//! Enumeration of all supported IRCv3 capability extensions.
+//! Enumeration of all supported `IRCv3` capability extensions.
 
-/// List of all supported IRCv3 capability extensions from the
-/// [IRCv3 specifications](http://ircv3.net/irc/).
-#[derive(Debug, PartialEq)]
+/// List of all supported `IRCv3` capability extensions from the
+/// [`IRCv3` specifications](http://ircv3.net/irc/).
+#[derive(Debug, PartialEq, Eq)]
 pub enum Capability {
     /// [multi-prefix](http://ircv3.net/specs/extensions/multi-prefix-3.1.html)
     MultiPrefix,
@@ -40,7 +40,7 @@ pub enum Capability {
     Custom(&'static str),
 }
 
-/// List of IRCv3 capability negotiation versions.
+/// List of `IRCv3` capability negotiation versions.
 pub enum NegotiationVersion {
     /// [IRCv3.1](http://ircv3.net/specs/core/capability-negotiation-3.1.html)
     V301,
@@ -51,23 +51,23 @@ pub enum NegotiationVersion {
 impl AsRef<str> for Capability {
     fn as_ref(&self) -> &str {
         match *self {
-            Capability::MultiPrefix => "multi-prefix",
-            Capability::Sasl => "sasl",
-            Capability::AccountNotify => "account-notify",
-            Capability::AwayNotify => "away-notify",
-            Capability::ExtendedJoin => "extended-join",
-            Capability::Metadata => "metadata",
-            Capability::MetadataNotify => "metadata-notify",
-            Capability::Monitor => "monitor",
-            Capability::AccountTag => "account-tag",
-            Capability::Batch => "batch",
-            Capability::CapNotify => "cap-notify",
-            Capability::ChgHost => "chghost",
-            Capability::EchoMessage => "echo-message",
-            Capability::InviteNotify => "invite-notify",
-            Capability::ServerTime => "server-time",
-            Capability::UserhostInNames => "userhost-in-names",
-            Capability::Custom(s) => s,
+            Self::MultiPrefix => "multi-prefix",
+            Self::Sasl => "sasl",
+            Self::AccountNotify => "account-notify",
+            Self::AwayNotify => "away-notify",
+            Self::ExtendedJoin => "extended-join",
+            Self::Metadata => "metadata",
+            Self::MetadataNotify => "metadata-notify",
+            Self::Monitor => "monitor",
+            Self::AccountTag => "account-tag",
+            Self::Batch => "batch",
+            Self::CapNotify => "cap-notify",
+            Self::ChgHost => "chghost",
+            Self::EchoMessage => "echo-message",
+            Self::InviteNotify => "invite-notify",
+            Self::ServerTime => "server-time",
+            Self::UserhostInNames => "userhost-in-names",
+            Self::Custom(s) => s,
         }
     }
 }

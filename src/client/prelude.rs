@@ -14,7 +14,7 @@
 //! The various `proto` types capture details of the IRC protocol that are used throughout the
 //! client API. `Message`, `Command`, and `Response` are used to send and receive messages along
 //! the connection, and are naturally at the heart of communication in the IRC protocol.
-//! `Capability` and `NegotiationVersion` are used to determine (with the server) what IRCv3
+//! `Capability` and `NegotiationVersion` are used to determine (with the server) what `IRCv3`
 //! functionality to enable for the connection. Certain parts of the API offer suggestions for
 //! extensions that will improve the user experience, and give examples of how to enable them
 //! using `Capability`. `Mode`, `ChannelMode`, and `UserMode` are used in a high-level API for

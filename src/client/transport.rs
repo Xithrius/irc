@@ -42,7 +42,7 @@ struct Pinger {
 
 impl Pinger {
     /// Construct a new pinger helper.
-    pub fn new(tx: UnboundedSender<Message>, config: &Config) -> Pinger {
+    pub fn new(tx: UnboundedSender<Message>, config: &Config) -> Self {
         let ping_time = Duration::from_secs(u64::from(config.ping_time()));
         let ping_timeout = Duration::from_secs(u64::from(config.ping_timeout()));
 
@@ -58,8 +58,7 @@ impl Pinger {
     /// Handle an incoming message.
     fn handle_message(self: Pin<&mut Self>, message: &Message) -> error::Result<()> {
         match message.command {
-            Command::Response(Response::RPL_ENDOFMOTD, _)
-            | Command::Response(Response::ERR_NOMOTD, _) => {
+            Command::Response(Response::RPL_ENDOFMOTD | Response::ERR_NOMOTD, _) => {
                 *self.project().enabled = true;
             }
             // On receiving a `PING` message from the server, we automatically respond with
@@ -69,7 +68,7 @@ impl Pinger {
             }
             // Check `PONG` responses from the server. If it matches, we will update the
             // last instant that the pong was received. This will prevent timeout.
-            Command::PONG(_, None) | Command::PONG(_, Some(_)) => {
+            Command::PONG(_, None | Some(_)) => {
                 log::trace!("Received PONG");
                 self.project().ping_deadline.set(None);
             }
@@ -118,7 +117,14 @@ impl Future for Pinger {
             }
         }
 
-        if self.as_mut().project().ping_interval.poll_tick(cx).is_ready() && *self.as_mut().project().enabled {
+        if self
+            .as_mut()
+            .project()
+            .ping_interval
+            .poll_tick(cx)
+            .is_ready()
+            && *self.as_mut().project().enabled
+        {
             self.as_mut().send_ping()?;
         }
 
@@ -144,17 +150,14 @@ where
     T: Unpin + AsyncRead + AsyncWrite,
 {
     /// Creates a new `Transport` from the given IRC stream.
-    pub fn new(
-        config: &Config,
-        inner: Framed<T, IrcCodec>,
-        tx: UnboundedSender<Message>,
-    ) -> Transport<T> {
+    pub fn new(config: &Config, inner: Framed<T, IrcCodec>, tx: UnboundedSender<Message>) -> Self {
         let pinger = Some(Pinger::new(tx, config));
 
-        Transport { inner, pinger }
+        Self { inner, pinger }
     }
 
     /// Gets the inner stream underlying the `Transport`.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn into_inner(self) -> Framed<T, IrcCodec> {
         self.inner
     }
@@ -250,8 +253,8 @@ where
     T: AsyncRead + AsyncWrite,
 {
     /// Wraps the given `Transport` in logging.
-    pub fn wrap(inner: Transport<T>) -> Logged<T> {
-        Logged {
+    pub fn wrap(inner: Transport<T>) -> Self {
+        Self {
             inner,
             view: LogView {
                 sent: Arc::new(RwLock::new(vec![])),

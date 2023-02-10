@@ -16,17 +16,17 @@ pub struct LineCodec {
 }
 
 impl LineCodec {
-    /// Creates a new instance of LineCodec from the specified encoding.
-    pub fn new(label: &str) -> error::Result<LineCodec> {
+    /// Creates a new instance of `LineCodec` from the specified encoding.
+    pub fn new(label: &str) -> error::Result<Self> {
         encoding_from_whatwg_label(label)
-            .map(|enc| LineCodec {
+            .map(|enc| Self {
                 encoding: enc,
                 next_index: 0,
             })
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    &format!("Attempted to use unknown codec {}.", label)[..],
+                    &format!("Attempted to use unknown codec {label}.")[..],
                 )
                 .into()
             })

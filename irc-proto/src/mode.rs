@@ -1,5 +1,5 @@
 //! A module defining an API for IRC user and channel modes.
-use std::fmt;
+use std::{borrow, fmt, string};
 
 use crate::command::Command;
 use crate::error::MessageParseError;
@@ -19,7 +19,7 @@ pub trait ModeType: fmt::Display + fmt::Debug + Clone + PartialEq {
 }
 
 /// User modes for the MODE command.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UserMode {
     /// a - user is flagged as away
     Away,
@@ -51,7 +51,7 @@ impl ModeType for UserMode {
         false
     }
 
-    fn from_char(c: char) -> UserMode {
+    fn from_char(c: char) -> Self {
         use self::UserMode::*;
 
         match c {
@@ -91,7 +91,7 @@ impl fmt::Display for UserMode {
 }
 
 /// Channel modes for the MODE command.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChannelMode {
     /// b - ban the user from joining or speaking in the channel
     Ban,
@@ -153,7 +153,7 @@ impl ModeType for ChannelMode {
         )
     }
 
-    fn from_char(c: char) -> ChannelMode {
+    fn from_char(c: char) -> Self {
         use self::ChannelMode::*;
 
         match c {
@@ -209,7 +209,7 @@ impl fmt::Display for ChannelMode {
 }
 
 /// A mode argument for the MODE command.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode<T>
 where
     T: ModeType,
@@ -225,13 +225,13 @@ where
     T: ModeType,
 {
     /// Creates a plus mode with an `&str` argument.
-    pub fn plus(inner: T, arg: Option<&str>) -> Mode<T> {
-        Mode::Plus(inner, arg.map(|s| s.to_owned()))
+    pub fn plus(inner: T, arg: Option<&str>) -> Self {
+        Self::Plus(inner, arg.map(borrow::ToOwned::to_owned))
     }
 
     /// Creates a minus mode with an `&str` argument.
-    pub fn minus(inner: T, arg: Option<&str>) -> Mode<T> {
-        Mode::Minus(inner, arg.map(|s| s.to_owned()))
+    pub fn minus(inner: T, arg: Option<&str>) -> Self {
+        Self::Minus(inner, arg.map(borrow::ToOwned::to_owned))
     }
 }
 
@@ -241,10 +241,10 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Mode::Plus(ref mode, Some(ref arg)) => write!(f, "+{} {}", mode, arg),
-            Mode::Minus(ref mode, Some(ref arg)) => write!(f, "-{} {}", mode, arg),
-            Mode::Plus(ref mode, None) => write!(f, "+{}", mode),
-            Mode::Minus(ref mode, None) => write!(f, "-{}", mode),
+            Self::Plus(ref mode, Some(ref arg)) => write!(f, "+{mode} {arg}"),
+            Self::Minus(ref mode, Some(ref arg)) => write!(f, "-{mode} {arg}"),
+            Self::Plus(ref mode, None) => write!(f, "+{mode}"),
+            Self::Minus(ref mode, None) => write!(f, "-{mode}"),
         }
     }
 }
@@ -258,7 +258,7 @@ enum PlusMinus {
 impl Mode<UserMode> {
     // TODO: turning more edge cases into errors.
     /// Parses the specified mode string as user modes.
-    pub fn as_user_modes(pieces: &[&str]) -> Result<Vec<Mode<UserMode>>, MessageParseError> {
+    pub fn as_user_modes(pieces: &[&str]) -> Result<Vec<Self>, MessageParseError> {
         parse_modes(pieces)
     }
 }
@@ -267,7 +267,7 @@ impl Mode<UserMode> {
 impl Mode<ChannelMode> {
     // TODO: turning more edge cases into errors.
     /// Parses the specified mode string as channel modes.
-    pub fn as_channel_modes(pieces: &[&str]) -> Result<Vec<Mode<ChannelMode>>, MessageParseError> {
+    pub fn as_channel_modes(pieces: &[&str]) -> Result<Vec<Self>, MessageParseError> {
         parse_modes(pieces)
     }
 }
@@ -312,20 +312,17 @@ where
                         None
                     };
                     res.push(match cur_mod {
-                        Plus => Mode::Plus(mode, arg.map(|s| s.to_string())),
-                        Minus => Mode::Minus(mode, arg.map(|s| s.to_string())),
-                    })
+                        Plus => Mode::Plus(mode, arg.map(string::ToString::to_string)),
+                        Minus => Mode::Minus(mode, arg.map(string::ToString::to_string)),
+                    });
                 }
             }
         }
-
-        // TODO: if there are extra args left, this should error
-
-        Ok(res)
-    } else {
-        // No modifier
-        Ok(res)
     }
+
+    // TODO: if there are extra args left, we should get an error
+
+    Ok(res)
 }
 
 #[cfg(test)]

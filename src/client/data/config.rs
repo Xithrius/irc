@@ -68,7 +68,7 @@ use crate::error::{ConfigError, Result};
 /// let config = Config::load("config.toml").unwrap();
 /// # }
 /// ```
-#[derive(Clone, Default, PartialEq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Config {
     /// A list of the owners of the client by nickname (for bots).
@@ -221,36 +221,37 @@ pub struct Config {
 }
 
 #[cfg(feature = "serde")]
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(v: &bool) -> bool {
     !v
 }
 
 impl Config {
-    fn with_path<P: AsRef<Path>>(mut self, path: P) -> Config {
+    fn with_path<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.path = Some(path.as_ref().to_owned());
         self
     }
 
     /// Returns the location this Config was loaded from or `<none>`.
     pub(crate) fn path(&self) -> String {
-        self.path
-            .as_ref()
-            .map(|buf| buf.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "<none>".to_owned())
+        self.path.as_ref().map_or_else(
+            || "<none>".to_owned(),
+            |buf| buf.to_string_lossy().into_owned(),
+        )
     }
 
     /// Loads a configuration from the desired path. This will use the file extension to detect
     /// which format to parse the file as (json, toml, or yaml). Using each format requires having
     /// its respective crate feature enabled. Only json is available by default.
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Config> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut file = File::open(&path)?;
         let mut data = String::new();
         file.read_to_string(&mut data)?;
 
-        let res = match path.as_ref().extension().and_then(|s| s.to_str()) {
-            Some("json") => Config::load_json(&path, &data),
-            Some("toml") => Config::load_toml(&path, &data),
-            Some("yaml") | Some("yml") => Config::load_yaml(&path, &data),
+        let res = match path.as_ref().extension().and_then(std::ffi::OsStr::to_str) {
+            Some("json") => Self::load_json(&path, &data),
+            Some("toml") => Self::load_toml(&path, &data),
+            Some("yaml" | "yml") => Self::load_yaml(&path, &data),
             Some(ext) => Err(InvalidConfig {
                 path: path.as_ref().to_string_lossy().into_owned(),
                 cause: ConfigError::UnknownConfigFormat {
@@ -275,7 +276,7 @@ impl Config {
     }
 
     #[cfg(not(feature = "json_config"))]
-    fn load_json<P: AsRef<Path>>(path: P, _: &str) -> Result<Config> {
+    fn load_json<P: AsRef<Path>>(path: P, _: &str) -> Result<Self> {
         Err(InvalidConfig {
             path: path.as_ref().to_string_lossy().into_owned(),
             cause: ConfigError::ConfigFormatDisabled { format: "JSON" },
@@ -283,7 +284,7 @@ impl Config {
     }
 
     #[cfg(feature = "toml_config")]
-    fn load_toml<P: AsRef<Path>>(path: P, data: &str) -> Result<Config> {
+    fn load_toml<P: AsRef<Path>>(path: P, data: &str) -> Result<Self> {
         toml::from_str(data).map_err(|e| InvalidConfig {
             path: path.as_ref().to_string_lossy().into_owned(),
             cause: ConfigError::InvalidToml(TomlError::Read(e)),
@@ -307,7 +308,7 @@ impl Config {
     }
 
     #[cfg(not(feature = "yaml_config"))]
-    fn load_yaml<P: AsRef<Path>>(path: P, _: &str) -> Result<Config> {
+    fn load_yaml<P: AsRef<Path>>(path: P, _: &str) -> Result<Self> {
         Err(InvalidConfig {
             path: path.as_ref().to_string_lossy().into_owned(),
             cause: ConfigError::ConfigFormatDisabled { format: "YAML" },
@@ -320,10 +321,10 @@ impl Config {
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let _ = self.path.take();
         let mut file = File::create(&path)?;
-        let data = match path.as_ref().extension().and_then(|s| s.to_str()) {
+        let data = match path.as_ref().extension().and_then(std::ffi::OsStr::to_str) {
             Some("json") => self.save_json(&path)?,
             Some("toml") => self.save_toml(&path)?,
-            Some("yaml") | Some("yml") => self.save_yaml(&path)?,
+            Some("yaml" | "yml") => self.save_yaml(&path)?,
             Some(ext) => {
                 return Err(InvalidConfig {
                     path: path.as_ref().to_string_lossy().into_owned(),
@@ -393,6 +394,7 @@ impl Config {
     }
 
     /// Determines whether or not the nickname provided is the owner of the bot.
+    #[must_use]
     pub fn is_owner(&self, nickname: &str) -> bool {
         self.owners.iter().any(|n| n == nickname)
     }
@@ -413,12 +415,14 @@ impl Config {
 
     /// Gets the alternate nicknames specified in the configuration.
     /// This defaults to an empty vector when not specified.
+    #[must_use]
     pub fn alternate_nicknames(&self) -> &[String] {
         &self.alt_nicks
     }
 
     /// Gets the username specified in the configuration.
     /// This defaults to the user's nickname when not specified.
+    #[must_use]
     pub fn username(&self) -> &str {
         self.username
             .as_ref()
@@ -427,6 +431,7 @@ impl Config {
 
     /// Gets the real name specified in the configuration.
     /// This defaults to the user's nickname when not specified.
+    #[must_use]
     pub fn real_name(&self) -> &str {
         self.realname
             .as_ref()
@@ -442,13 +447,14 @@ impl Config {
     }
 
     /// Gets the port of the server specified in the configuration.
-    /// This defaults to 6697 (or 6667 if use_tls is specified as false) when not specified.
+    /// This defaults to 6697 (or 6667 if `use_tls` is specified as false) when not specified.
     #[cfg(any(feature = "tls-native", feature = "tls-rust"))]
+    #[must_use]
     pub fn port(&self) -> u16 {
-        self.port.as_ref().cloned().unwrap_or(match self.use_tls() {
-            true => 6697,
-            false => 6667,
-        })
+        self.port
+            .as_ref()
+            .copied()
+            .unwrap_or(if self.use_tls() { 6697 } else { 6667 })
     }
 
     /// Gets the port of the server specified in the configuration.
@@ -504,27 +510,31 @@ impl Config {
     /// Gets whether or not to use TLS with this connection.
     /// This defaults to true when not specified.
     #[cfg(any(feature = "tls-native", feature = "tls-rust"))]
+    #[must_use]
     pub fn use_tls(&self) -> bool {
-        self.use_tls.as_ref().cloned().map_or(true, |s| s)
+        self.use_tls.as_ref().copied().map_or(true, |s| s)
     }
 
     /// Gets the path to the TLS certificate in DER format if specified.
     #[cfg(any(feature = "tls-native", feature = "tls-rust"))]
+    #[must_use]
     pub fn cert_path(&self) -> Option<&str> {
         self.cert_path.as_deref()
     }
 
     /// Gets whether or not to dangerously accept invalid certificates.
     /// This defaults to `false` when not specified.
+    #[must_use]
     pub fn dangerously_accept_invalid_certs(&self) -> bool {
         self.dangerously_accept_invalid_certs
             .as_ref()
-            .cloned()
+            .copied()
             .unwrap_or(false)
     }
 
     /// Gets the path to the client authentication certificate in DER format if specified.
     #[cfg(any(feature = "tls-native", feature = "tls-rust"))]
+    #[must_use]
     pub fn client_cert_path(&self) -> Option<&str> {
         self.client_cert_path.as_deref()
     }
@@ -537,12 +547,14 @@ impl Config {
 
     /// Gets the encoding to use for this connection. This requires the encode feature to work.
     /// This defaults to UTF-8 when not specified.
+    #[must_use]
     pub fn encoding(&self) -> &str {
         self.encoding.as_ref().map_or("UTF-8", |s| s)
     }
 
     /// Gets the channels to join upon connection.
     /// This defaults to an empty vector if it's not specified.
+    #[must_use]
     pub fn channels(&self) -> &[String] {
         &self.channels
     }
@@ -567,6 +579,7 @@ impl Config {
     /// Gets the string to be sent in response to CTCP VERSION requests.
     /// This defaults to `irc:version:env` when not specified.
     /// For example, `irc:0.12.0:Compiled with rustc`
+    #[must_use]
     pub fn version(&self) -> &str {
         self.version.as_ref().map_or(crate::VERSION_STR, |s| s)
     }
@@ -581,23 +594,26 @@ impl Config {
 
     /// Gets the amount of time in seconds for the interval at which the client pings the server.
     /// This defaults to 180 seconds when not specified.
+    #[must_use]
     pub fn ping_time(&self) -> u32 {
-        self.ping_time.as_ref().cloned().unwrap_or(180)
+        self.ping_time.as_ref().copied().unwrap_or(180)
     }
 
     /// Gets the amount of time in seconds for the client to disconnect after not receiving a ping
     /// response.
     /// This defaults to 20 seconds when not specified.
+    #[must_use]
     pub fn ping_timeout(&self) -> u32 {
-        self.ping_timeout.as_ref().cloned().unwrap_or(20)
+        self.ping_timeout.as_ref().copied().unwrap_or(20)
     }
 
     /// The amount of time in seconds to consider a window for burst messages. The message throttling
     /// system maintains the invariant that in the past `burst_window_length` seconds, the maximum
     /// number of messages sent is `max_messages_in_burst`.
     /// This defaults to 8 seconds when not specified.
+    #[must_use]
     pub fn burst_window_length(&self) -> u32 {
-        self.burst_window_length.as_ref().cloned().unwrap_or(8)
+        self.burst_window_length.as_ref().copied().unwrap_or(8)
     }
 
     /// The maximum number of messages that can be sent in a burst window before they'll be delayed.
@@ -605,18 +621,21 @@ impl Config {
     /// system maintains the invariant that in the past `burst_window_length` seconds, the maximum
     /// number of messages sent is `max_messages_in_burst`.
     /// This defaults to 15 messages when not specified.
+    #[must_use]
     pub fn max_messages_in_burst(&self) -> u32 {
-        self.max_messages_in_burst.as_ref().cloned().unwrap_or(15)
+        self.max_messages_in_burst.as_ref().copied().unwrap_or(15)
     }
 
-    /// Gets whether or not to attempt nickname reclamation using NickServ GHOST.
+    /// Gets whether or not to attempt nickname reclamation using `NickServ` GHOST.
     /// This defaults to false when not specified.
-    pub fn should_ghost(&self) -> bool {
+    #[must_use]
+    pub const fn should_ghost(&self) -> bool {
         self.should_ghost
     }
 
-    /// Gets the NickServ command sequence to recover a nickname.
+    /// Gets the `NickServ` command sequence to recover a nickname.
     /// This defaults to `["GHOST"]` when not specified.
+    #[must_use]
     pub fn ghost_sequence(&self) -> Option<&[String]> {
         self.ghost_sequence.as_deref()
     }
@@ -628,13 +647,15 @@ impl Config {
 
     /// Gets whether or not to use a mock connection for testing.
     /// This defaults to false when not specified.
-    pub fn use_mock_connection(&self) -> bool {
+    #[must_use]
+    pub const fn use_mock_connection(&self) -> bool {
         self.use_mock_connection
     }
 
     /// Gets the initial value for the mock connection.
     /// This defaults to false when not specified.
     /// This has no effect if `use_mock_connection` is not `true`.
+    #[must_use]
     pub fn mock_initial_value(&self) -> &str {
         self.mock_initial_value.as_ref().map_or("", |s| s)
     }

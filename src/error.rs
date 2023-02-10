@@ -166,19 +166,19 @@ pub enum TomlError {
 }
 
 impl From<ProtocolError> for Error {
-    fn from(e: ProtocolError) -> Error {
+    fn from(e: ProtocolError) -> Self {
         match e {
-            ProtocolError::Io(e) => Error::Io(e),
+            ProtocolError::Io(e) => Self::Io(e),
             ProtocolError::InvalidMessage { string, cause } => {
-                Error::InvalidMessage { string, cause }
+                Self::InvalidMessage { string, cause }
             }
         }
     }
 }
 
 impl From<IoError> for Error {
-    fn from(e: IoError) -> Error {
-        Error::Io(e)
+    fn from(e: IoError) -> Self {
+        Self::Io(e)
     }
 }
 
@@ -191,8 +191,8 @@ impl From<tokio_socks::Error> for Error {
 
 #[cfg(feature = "tls-native")]
 impl From<native_tls::Error> for Error {
-    fn from(e: native_tls::Error) -> Error {
-        Error::Tls(e)
+    fn from(e: native_tls::Error) -> Self {
+        Self::Tls(e)
     }
 }
 
@@ -204,19 +204,19 @@ impl From<InvalidDNSNameError> for Error {
 }
 
 impl From<RecvError> for Error {
-    fn from(e: RecvError) -> Error {
-        Error::SyncChannelClosed(e)
+    fn from(e: RecvError) -> Self {
+        Self::SyncChannelClosed(e)
     }
 }
 
 impl<T> From<SendError<T>> for Error {
-    fn from(_: SendError<T>) -> Error {
-        Error::AsyncChannelClosed
+    fn from(_: SendError<T>) -> Self {
+        Self::AsyncChannelClosed
     }
 }
 
 impl<T> From<TrySendError<T>> for Error {
-    fn from(_: TrySendError<T>) -> Error {
-        Error::AsyncChannelClosed
+    fn from(_: TrySendError<T>) -> Self {
+        Self::AsyncChannelClosed
     }
 }

@@ -1,12 +1,4 @@
-# the irc crate [![Build Status][ci-badge]][ci] [![Crates.io][cr-badge]][cr] ![Downloads][dl-badge] [![Docs][doc-badge]][doc]
-
-[ci-badge]: https://travis-ci.org/aatxe/irc.svg?branch=stable
-[ci]: https://travis-ci.org/aatxe/irc
-[cr-badge]: https://img.shields.io/crates/v/irc.svg
-[cr]: https://crates.io/crates/irc
-[dl-badge]: https://img.shields.io/crates/d/irc.svg
-[doc-badge]: https://docs.rs/irc/badge.svg
-[doc]: https://docs.rs/irc
+# The IRC crate
 
 [rfc2812]: http://datatracker.ietf.org/doc/html/rfc2812
 [ircv3.1]: http://ircv3.net/irc/3.1.html

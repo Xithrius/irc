@@ -71,10 +71,10 @@ impl fmt::Debug for Connection {
             f,
             "{}",
             match *self {
-                Connection::Unsecured(_) => "Connection::Unsecured(...)",
+                Self::Unsecured(_) => "Connection::Unsecured(...)",
                 #[cfg(any(feature = "tls-native", feature = "tls-rust"))]
-                Connection::Secured(_) => "Connection::Secured(...)",
-                Connection::Mock(_) => "Connection::Mock(...)",
+                Self::Secured(_) => "Connection::Secured(...)",
+                Self::Mock(_) => "Connection::Mock(...)",
             }
         )
     }
@@ -82,29 +82,26 @@ impl fmt::Debug for Connection {
 
 impl Connection {
     /// Creates a new `Connection` using the specified `Config`
-    pub(crate) async fn new(
-        config: &Config,
-        tx: UnboundedSender<Message>,
-    ) -> error::Result<Connection> {
+    pub(crate) async fn new(config: &Config, tx: UnboundedSender<Message>) -> error::Result<Self> {
         if config.use_mock_connection() {
             log::info!("Connecting via mock to {}.", config.server()?);
-            return Ok(Connection::Mock(Logged::wrap(
-                Self::new_mocked_transport(config, tx).await?,
-            )));
+            return Ok(Self::Mock(Logged::wrap(Self::new_mocked_transport(
+                config, tx,
+            )?)));
         }
 
         #[cfg(any(feature = "tls-native", feature = "tls-rust"))]
         {
             if config.use_tls() {
                 log::info!("Connecting via TLS to {}.", config.server()?);
-                return Ok(Connection::Secured(
+                return Ok(Self::Secured(
                     Self::new_secured_transport(config, tx).await?,
                 ));
             }
         }
 
         log::info!("Connecting to {}.", config.server()?);
-        Ok(Connection::Unsecured(
+        Ok(Self::Unsecured(
             Self::new_unsecured_transport(config, tx).await?,
         ))
     }
@@ -285,7 +282,7 @@ impl Connection {
         Ok(Transport::new(&config, framed, tx))
     }
 
-    async fn new_mocked_transport(
+    fn new_mocked_transport(
         config: &Config,
         tx: UnboundedSender<Message>,
     ) -> error::Result<Transport<MockStream>> {
@@ -315,7 +312,7 @@ impl Connection {
     /// Otherwise, this will always return `None`. This is used for unit testing.
     pub fn log_view(&self) -> Option<LogView> {
         match *self {
-            Connection::Mock(ref inner) => Some(inner.view()),
+            Self::Mock(ref inner) => Some(inner.view()),
             _ => None,
         }
     }

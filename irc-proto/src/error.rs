@@ -24,8 +24,8 @@ pub enum ProtocolError {
 }
 
 impl From<std::io::Error> for ProtocolError {
-    fn from(e: std::io::Error) -> ProtocolError {
-        ProtocolError::Io(e)
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
     }
 }
 
