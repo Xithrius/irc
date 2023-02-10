@@ -65,7 +65,7 @@ impl Parser {
                 false
             }
             Text => !FORMAT_CHARACTERS.contains(&cur),
-            ColorCode if cur.is_digit(10) => {
+            ColorCode if cur.is_ascii_digit() => {
                 self.state = Foreground1(cur);
                 false
             }
@@ -86,7 +86,7 @@ impl Parser {
                 self.state = Comma;
                 false
             }
-            Comma if (cur.is_digit(10)) => {
+            Comma if cur.is_ascii_digit() => {
                 self.state = Background1(cur);
                 false
             }

@@ -154,7 +154,7 @@ impl Connection {
         let stream = Self::new_stream(config).await?;
         let framed = Framed::new(stream, IrcCodec::new(config.encoding())?);
 
-        Ok(Transport::new(&config, framed, tx))
+        Ok(Transport::new(config, framed, tx))
     }
 
     #[cfg(feature = "tls-native")]
@@ -186,7 +186,7 @@ impl Connection {
                 let mut client_cert_data = vec![];
                 file.read_to_end(&mut client_cert_data)?;
                 let client_cert_pass = config.client_cert_pass();
-                let pkcs12_archive = Identity::from_pkcs12(&client_cert_data, &client_cert_pass)?;
+                let pkcs12_archive = Identity::from_pkcs12(&client_cert_data, client_cert_pass)?;
                 builder.identity(pkcs12_archive);
                 log::info!(
                     "Using {} for client certificate authentication.",
@@ -213,7 +213,7 @@ impl Connection {
         let stream = connector.connect(domain, stream).await?;
         let framed = Framed::new(stream, IrcCodec::new(config.encoding())?);
 
-        Ok(Transport::new(&config, framed, tx))
+        Ok(Transport::new(config, framed, tx))
     }
 
     #[cfg(feature = "tls-rust")]
@@ -270,7 +270,9 @@ impl Connection {
         }
 
         if config.dangerously_accept_invalid_certs() {
-            builder.dangerous().set_certificate_verifier(Arc::new(DangerousAcceptAllVerifier));
+            builder
+                .dangerous()
+                .set_certificate_verifier(Arc::new(DangerousAcceptAllVerifier));
         }
 
         let connector = TlsConnector::from(Arc::new(builder));
@@ -306,7 +308,7 @@ impl Connection {
         let stream = MockStream::new(&initial);
         let framed = Framed::new(stream, IrcCodec::new(config.encoding())?);
 
-        Ok(Transport::new(&config, framed, tx))
+        Ok(Transport::new(config, framed, tx))
     }
 
     /// Gets a view of the internal logging if and only if this connection is using a mock stream.
@@ -382,7 +384,7 @@ impl rustls::ServerCertVerifier for DangerousAcceptAllVerifier {
         _: &rustls::RootCertStore,
         _: &[rustls::Certificate],
         _: DNSNameRef,
-        _: &[u8]
+        _: &[u8],
     ) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
         return Ok(rustls::ServerCertVerified::assertion());
     }

@@ -1,4 +1,5 @@
 //! Enumeration of all available client commands.
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 use crate::chan::ChannelExt;
@@ -231,7 +232,7 @@ impl<'a> From<&'a Command> for String {
                 "MODE {}{}",
                 u,
                 m.iter().fold(String::new(), |mut acc, mode| {
-                    acc.push_str(" ");
+                    acc.push(' ');
                     acc.push_str(&mode.to_string());
                     acc
                 })
@@ -252,7 +253,7 @@ impl<'a> From<&'a Command> for String {
                 "MODE {}{}",
                 u,
                 m.iter().fold(String::new(), |mut acc, mode| {
-                    acc.push_str(" ");
+                    acc.push(' ');
                     acc.push_str(&mode.to_string());
                     acc
                 })
@@ -445,12 +446,10 @@ impl Command {
         } else if cmd.eq_ignore_ascii_case("MODE") {
             if args.is_empty() {
                 raw(cmd, args)
+            } else if args[0].is_channel_name() {
+                Command::ChannelMODE(args[0].to_owned(), Mode::as_channel_modes(&args[1..])?)
             } else {
-                if args[0].is_channel_name() {
-                    Command::ChannelMODE(args[0].to_owned(), Mode::as_channel_modes(&args[1..])?)
-                } else {
-                    Command::UserMODE(args[0].to_owned(), Mode::as_user_modes(&args[1..])?)
-                }
+                Command::UserMODE(args[0].to_owned(), Mode::as_user_modes(&args[1..])?)
             }
         } else if cmd.eq_ignore_ascii_case("SERVICE") {
             if args.len() != 6 {
@@ -665,7 +664,7 @@ impl Command {
             } else if args.len() == 1 {
                 Command::WHO(Some(args[0].to_owned()), None)
             } else if args.len() == 2 {
-                Command::WHO(Some(args[0].to_owned()), Some(&args[1][..] == "o"))
+                Command::WHO(Some(args[0].to_owned()), Some(args[1] == "o"))
             } else {
                 raw(cmd, args)
             }
@@ -907,13 +906,12 @@ impl Command {
                 raw(cmd, args)
             }
         } else if cmd.eq_ignore_ascii_case("METADATA") {
-            if args.len() == 2 {
-                match args[1].parse() {
+            match args.len().cmp(&2) {
+                Ordering::Equal => match args[1].parse() {
                     Ok(c) => Command::METADATA(args[0].to_owned(), Some(c), None),
                     Err(_) => raw(cmd, args),
-                }
-            } else if args.len() > 2 {
-                match args[1].parse() {
+                },
+                Ordering::Greater => match args[1].parse() {
                     Ok(c) => Command::METADATA(
                         args[0].to_owned(),
                         Some(c),
@@ -930,9 +928,8 @@ impl Command {
                             raw(cmd, args)
                         }
                     }
-                }
-            } else {
-                raw(cmd, args)
+                },
+                _ => raw(cmd, args),
             }
         } else if cmd.eq_ignore_ascii_case("MONITOR") {
             if args.len() == 2 {
